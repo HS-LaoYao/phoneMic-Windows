@@ -9,7 +9,7 @@ namespace PhoneMic
     internal static class UiTheme
     {
         public static readonly Color Bg = Color.FromArgb(0x12, 0x16, 0x1A);
-        public static readonly Color Card = Color.FromArgb(0x1B, 0x22, 0x2A);
+        public static readonly Color CardBg = Color.FromArgb(0x1B, 0x22, 0x2A);
         public static readonly Color Field = Color.FromArgb(0x0F, 0x14, 0x19);
         public static readonly Color Text = Color.FromArgb(0xE6, 0xED, 0xF3);
         public static readonly Color Sub = Color.FromArgb(0x8B, 0x98, 0xA5);
@@ -55,7 +55,7 @@ namespace PhoneMic
         }
 
         /// <summary>扁平样式的按钮（深色、细边）</summary>
-        public static Button Button(string text, int x, int y, int w, int h)
+        public static Button MakeButton(string text, int x, int y, int w, int h)
         {
             var b = new Button
             {
@@ -74,13 +74,13 @@ namespace PhoneMic
         }
 
         /// <summary>圆角深色卡片，左上角带一个说明小标题</summary>
-        public static Panel Card(Control parent, int x, int y, int w, int h, string title)
+        public static Panel MakeCard(Control parent, int x, int y, int w, int h, string title)
         {
             var p = new Panel
             {
                 Location = new Point(x, y),
                 Size = new Size(w, h),
-                BackColor = Card
+                BackColor = CardBg
             };
             ApplyRound(p, 16);
 
@@ -96,7 +96,7 @@ namespace PhoneMic
             return p;
         }
 
-        public static Label Label(string text, int x, int y, int w, int h, float size, Color color)
+        public static Label MakeLabel(string text, int x, int y, int w, int h, float size, Color color)
         {
             return new Label
             {

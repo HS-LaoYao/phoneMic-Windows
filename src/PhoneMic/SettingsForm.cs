@@ -57,7 +57,7 @@ namespace PhoneMic
             int w = ClientSize.Width - 48;
 
             // ---------- 本机地址 ----------
-            var c1 = UiTheme.Card(this, 24, 20, w, 100, "本机地址（手机自动发现，一般不用管）");
+            var c1 = UiTheme.MakeCard(this, 24, 20, w, 100, "本机地址（手机自动发现，一般不用管）");
             _txtAddr = new TextBox
             {
                 Location = new Point(20, 48),
@@ -71,7 +71,7 @@ namespace PhoneMic
             };
             c1.Controls.Add(_txtAddr);
 
-            var btnCopy = UiTheme.Button("复制", w - 20 - 120, 48, 120, 34);
+            var btnCopy = UiTheme.MakeButton("复制", w - 20 - 120, 48, 120, 34);
             btnCopy.Click += delegate
             {
                 try { Clipboard.SetText(_txtAddr.Text); } catch { }
@@ -79,7 +79,7 @@ namespace PhoneMic
             c1.Controls.Add(btnCopy);
 
             // ---------- 输出设备 ----------
-            var c2 = UiTheme.Card(this, 24, 136, w, 160, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
+            var c2 = UiTheme.MakeCard(this, 24, 136, w, 160, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
             _cboDevice = new ComboBox
             {
                 Location = new Point(20, 48),
@@ -92,52 +92,52 @@ namespace PhoneMic
             _cboDevice.SelectedIndexChanged += OnDeviceChanged;
             c2.Controls.Add(_cboDevice);
 
-            var btnRefresh = UiTheme.Button("刷新", w - 20 - 112, 47, 112, 32);
+            var btnRefresh = UiTheme.MakeButton("刷新", w - 20 - 112, 47, 112, 32);
             btnRefresh.Click += delegate { LoadDevices(); };
             c2.Controls.Add(btnRefresh);
 
-            _lblVb = UiTheme.Label("", 20, 92, w - 20 - 200, 26, 9.5f, UiTheme.Amber);
+            _lblVb = UiTheme.MakeLabel("", 20, 92, w - 20 - 200, 26, 9.5f, UiTheme.Amber);
             c2.Controls.Add(_lblVb);
 
-            _btnInstall = UiTheme.Button("安装虚拟声卡", w - 20 - 190, 90, 190, 32);
+            _btnInstall = UiTheme.MakeButton("安装虚拟声卡", w - 20 - 190, 90, 190, 32);
             _btnInstall.ForeColor = UiTheme.Amber;
             _btnInstall.Visible = false;
             _btnInstall.Click += delegate { InstallVb(); };
             c2.Controls.Add(_btnInstall);
 
-            c2.Controls.Add(UiTheme.Label("位置：控制面板 → 声音 → 录制，能看到 CABLE Output 就说明装好了",
+            c2.Controls.Add(UiTheme.MakeLabel("位置：控制面板 → 声音 → 录制，能看到 CABLE Output 就说明装好了",
                 20, 122, w - 40, 24, 9f, UiTheme.Sub));
 
             // ---------- 系统麦克风 ----------
-            var c3 = UiTheme.Card(this, 24, 312, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
+            var c3 = UiTheme.MakeCard(this, 24, 312, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
 
-            _lblMicConsole = UiTheme.Label("默认设备：读取中…", 20, 48, w - 20 - 190, 26, 10f, UiTheme.Sub);
+            _lblMicConsole = UiTheme.MakeLabel("默认设备：读取中…", 20, 48, w - 20 - 190, 26, 10f, UiTheme.Sub);
             c3.Controls.Add(_lblMicConsole);
 
-            _lblMicComm = UiTheme.Label("默认通信设备：读取中…", 20, 80, w - 20 - 190, 26, 10f, UiTheme.Sub);
+            _lblMicComm = UiTheme.MakeLabel("默认通信设备：读取中…", 20, 80, w - 20 - 190, 26, 10f, UiTheme.Sub);
             c3.Controls.Add(_lblMicComm);
 
-            _btnSetMic = UiTheme.Button("设为默认麦克风", w - 20 - 176, 46, 176, 34);
+            _btnSetMic = UiTheme.MakeButton("设为默认麦克风", w - 20 - 176, 46, 176, 34);
             _btnSetMic.ForeColor = UiTheme.Green;
             _btnSetMic.Click += delegate { SetAsDefaultMic(); };
             c3.Controls.Add(_btnSetMic);
 
-            _btnRestoreMic = UiTheme.Button("恢复原来的", w - 20 - 176, 84, 176, 30);
+            _btnRestoreMic = UiTheme.MakeButton("恢复原来的", w - 20 - 176, 84, 176, 30);
             _btnRestoreMic.Font = UiTheme.Font(9.5f);
             _btnRestoreMic.Visible = false;
             _btnRestoreMic.Click += delegate { RestorePrevMic(); };
             c3.Controls.Add(_btnRestoreMic);
 
-            _btnSelfTest = UiTheme.Button("声卡自检（录 3 秒）", 20, 124, 210, 38);
+            _btnSelfTest = UiTheme.MakeButton("声卡自检（录 3 秒）", 20, 124, 210, 38);
             _btnSelfTest.ForeColor = UiTheme.Blue;
             _btnSelfTest.Click += delegate { RunSelfTest(); };
             c3.Controls.Add(_btnSelfTest);
 
-            _lblTest = UiTheme.Label("点它，然后对着手机说话 —— 看虚拟声卡里到底有没有声音", 244, 130, w - 20 - 244, 28, 9f, UiTheme.Sub);
+            _lblTest = UiTheme.MakeLabel("点它，然后对着手机说话 —— 看虚拟声卡里到底有没有声音", 244, 130, w - 20 - 244, 28, 9f, UiTheme.Sub);
             c3.Controls.Add(_lblTest);
 
             // ---------- 选项 ----------
-            var c4 = UiTheme.Card(this, 24, 538, w, 100, "选项");
+            var c4 = UiTheme.MakeCard(this, 24, 538, w, 100, "选项");
             _chkMin = new CheckBox
             {
                 Text = "关闭窗口时最小化到托盘（不退出）",
@@ -163,7 +163,7 @@ namespace PhoneMic
             c4.Controls.Add(_chkAuto);
 
             // ---------- 日志 ----------
-            var c5 = UiTheme.Card(this, 24, 654, w, 200, "日志（出问题时把这里的内容发我）");
+            var c5 = UiTheme.MakeCard(this, 24, 654, w, 200, "日志（出问题时把这里的内容发我）");
             _txtLog = new TextBox
             {
                 Location = new Point(20, 46),
@@ -179,12 +179,12 @@ namespace PhoneMic
             };
             c5.Controls.Add(_txtLog);
 
-            var btnCopyLog = UiTheme.Button("复制日志", 20, 160, 120, 32);
+            var btnCopyLog = UiTheme.MakeButton("复制日志", 20, 160, 120, 32);
             btnCopyLog.Font = UiTheme.Font(9.5f);
             btnCopyLog.Click += delegate { try { Clipboard.SetText(_txtLog.Text); } catch { } };
             c5.Controls.Add(btnCopyLog);
 
-            var btnOpenDir = UiTheme.Button("打开日志文件夹", 148, 160, 150, 32);
+            var btnOpenDir = UiTheme.MakeButton("打开日志文件夹", 148, 160, 150, 32);
             btnOpenDir.Font = UiTheme.Font(9.5f);
             btnOpenDir.Click += delegate
             {
@@ -192,7 +192,7 @@ namespace PhoneMic
             };
             c5.Controls.Add(btnOpenDir);
 
-            var btnRefreshLog = UiTheme.Button("刷新", w - 20 - 100, 160, 100, 32);
+            var btnRefreshLog = UiTheme.MakeButton("刷新", w - 20 - 100, 160, 100, 32);
             btnRefreshLog.Font = UiTheme.Font(9.5f);
             btnRefreshLog.Click += delegate { RefreshLog(); };
             c5.Controls.Add(btnRefreshLog);
