@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace PhoneMic
@@ -11,11 +12,12 @@ namespace PhoneMic
     /// <summary>
     /// 主窗口。
     ///
-    /// 布局（从上到下）：状态 + 实时波形 / 本机地址 / 输出设备 / 联动按键 / 选项 / 开始按钮。
+    /// 布局：状态 + 实时波形 / 系统麦克风 / 地址与输出设备 / 联动按键。
     /// 界面全部用代码搭，不用 Designer。
     ///
-    /// 关于波形：它画的是**实际收到的音频音量**。柱子随说话起伏 = 手机声音已经到电脑了；
-    /// 此时若别的软件还听不到，问题就在对方的麦克风选择上。
+    /// 两个诊断入口：
+    ///   1. 波形 —— 手机的声音有没有到电脑
+    ///   2. 「系统麦克风」+「声卡自检」 —— 别的软件到底在录哪个设备
     /// </summary>
     internal sealed class MainForm : Form
     {
@@ -30,8 +32,8 @@ namespace PhoneMic
         private static readonly Color CRed = Color.FromArgb(0xF8, 0x51, 0x49);
         private static readonly Color CAmber = Color.FromArgb(0xD2, 0x99, 0x22);
 
-        private const int Pad = 20;       // 窗口内边距
-        private const int CardPad = 18;   // 卡片内边距
+        private const int Pad = 22;       // 窗口内边距
+        private const int CardPad = 20;   // 卡片内边距
 
         private Config _cfg;
         private UdpReceiver _rx;
@@ -46,7 +48,6 @@ namespace PhoneMic
         private bool _talking;
         private bool _connected;
 
-        // 电平采集：UDP 线程写，UI 定时器读
         private volatile float _peak;
         private long _packets;
         private int _silentTicks;
@@ -56,10 +57,11 @@ namespace PhoneMic
         // ===== 控件 =====
         private Panel _dot;
         private Label _lblStatus, _lblDetail, _lblMeter, _lblKey, _lblVb, _lblFoot;
+        private Label _lblMicConsole, _lblMicComm;
         private Waveform _wave;
         private TextBox _txtAddr;
         private ComboBox _cboDevice;
-        private Button _btnCopy, _btnRefresh, _btnInstall, _btnRecord, _btnClear, _btnStart;
+        private Button _btnCopy, _btnRefresh, _btnInstall, _btnRecord, _btnClear, _btnStart, _btnSelfTest;
         private CheckBox _chkMin, _chkAuto;
 
         public MainForm()
@@ -67,14 +69,14 @@ namespace PhoneMic
             _cfg = Config.Load();
 
             Text = "phoneMic";
-            ClientSize = new Size(680, 800);
-            MinimumSize = Size;      // Size 已包含边框，避免用户把窗口拖到比内容还小
+            ClientSize = new Size(780, 930);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = CBg;
             ForeColor = CText;
-            Font = Ui(9.5f);
+            Font = Ui(10.5f);
             AutoScaleMode = AutoScaleMode.Dpi;
             AutoScaleDimensions = new SizeF(96f, 96f);
+            AutoScroll = true;                 // 屏幕小 / 缩放大的时候自动出滚动条，不挤压内容
             DoubleBuffered = true;
             Icon = MakeIcon();
 
@@ -92,6 +94,7 @@ namespace PhoneMic
             LoadDevices();
             UpdateKeyLabel();
             SetStatus("未开始", CSub, "点下面的「开始」按钮");
+            RefreshMicInfo();
 
             Log("phoneMic 已启动。手机和电脑连同一个 WiFi 即可。");
         }
@@ -138,6 +141,16 @@ namespace PhoneMic
             return path;
         }
 
+        private static void ApplyRound(Control c, int radius)
+        {
+            using (var path = RoundPath(new Rectangle(0, 0, c.Width, c.Height), radius))
+            {
+                var old = c.Region;
+                c.Region = new Region(path);
+                if (old != null) old.Dispose();
+            }
+        }
+
         /// <summary>一张圆角深色卡片，带左上角小标题</summary>
         private Panel Card(int y, int h, string title)
         {
@@ -148,29 +161,19 @@ namespace PhoneMic
                 BackColor = CCard,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            ApplyRound(p, 14);
-            p.Resize += delegate { ApplyRound(p, 14); };
+            ApplyRound(p, 16);
+            p.Resize += delegate { ApplyRound(p, 16); };
 
             p.Controls.Add(new Label
             {
                 Text = title,
                 ForeColor = CSub,
-                Font = Ui(9f),
+                Font = Ui(10f),
                 AutoSize = true,
-                Location = new Point(CardPad, 14)
+                Location = new Point(CardPad, 16)
             });
             Controls.Add(p);
             return p;
-        }
-
-        private static void ApplyRound(Control c, int radius)
-        {
-            using (var path = RoundPath(new Rectangle(0, 0, c.Width, c.Height), radius))
-            {
-                var old = c.Region;
-                c.Region = new Region(path);
-                if (old != null) old.Dispose();
-            }
         }
 
         private Button FlatButton(string text, int x, int y, int w, int h)
@@ -183,7 +186,7 @@ namespace PhoneMic
                 FlatStyle = FlatStyle.Flat,
                 BackColor = CField,
                 ForeColor = CText,
-                Font = Ui(9.5f),
+                Font = Ui(10f),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
@@ -200,31 +203,31 @@ namespace PhoneMic
             Controls.Add(new Label
             {
                 Text = "phoneMic",
-                Location = new Point(Pad, 14),
+                Location = new Point(Pad, 16),
                 AutoSize = true,
-                Font = Ui(20f, FontStyle.Bold),
+                Font = Ui(18f, FontStyle.Bold),
                 ForeColor = CText
             });
             Controls.Add(new Label
             {
-                Text = "手机当电脑麦克风 · 说话时波形会动",
-                Location = new Point(Pad + 3, 52),
+                Text = "手机当电脑麦克风",
+                Location = new Point(Pad + 3, 50),
                 AutoSize = true,
-                Font = Ui(9.5f),
+                Font = Ui(10f),
                 ForeColor = CSub
             });
 
-            // ---------- 1. 状态 + 波形 ----------
-            var c1 = Card(84, 190, "连接状态");
-            _dot = new Panel { Location = new Point(CardPad, 46), Size = new Size(16, 16), BackColor = CSub };
-            ApplyRound(_dot, 8);
+            // ================= 1. 状态 + 波形 =================
+            var c1 = Card(80, 228, "连接状态");
+            _dot = new Panel { Location = new Point(CardPad, 56), Size = new Size(18, 18), BackColor = CSub };
+            ApplyRound(_dot, 9);
             c1.Controls.Add(_dot);
 
             _lblStatus = new Label
             {
-                Location = new Point(CardPad + 26, 40),
-                Size = new Size(c1.Width - CardPad * 2 - 26, 28),
-                Font = Ui(16f, FontStyle.Bold),
+                Location = new Point(CardPad + 30, 48),
+                Size = new Size(c1.Width - CardPad * 2 - 30, 34),
+                Font = Ui(17f, FontStyle.Bold),
                 ForeColor = CText,
                 Text = "未开始",
                 AutoEllipsis = true,
@@ -234,9 +237,9 @@ namespace PhoneMic
 
             _lblDetail = new Label
             {
-                Location = new Point(CardPad, 74),
-                Size = new Size(c1.Width - CardPad * 2, 20),
-                Font = Ui(9f),
+                Location = new Point(CardPad, 88),
+                Size = new Size(c1.Width - CardPad * 2, 22),
+                Font = Ui(9.5f),
                 ForeColor = CSub,
                 Text = "",
                 AutoEllipsis = true,
@@ -246,17 +249,17 @@ namespace PhoneMic
 
             _wave = new Waveform
             {
-                Location = new Point(CardPad, 102),
-                Size = new Size(c1.Width - CardPad * 2, 56),
+                Location = new Point(CardPad, 118),
+                Size = new Size(c1.Width - CardPad * 2, 66),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             c1.Controls.Add(_wave);
 
             _lblMeter = new Label
             {
-                Location = new Point(CardPad, 162),
-                Size = new Size(c1.Width - CardPad * 2, 18),
-                Font = Ui(8.5f),
+                Location = new Point(CardPad, 190),
+                Size = new Size(c1.Width - CardPad * 2, 20),
+                Font = Ui(9f),
                 ForeColor = CSub,
                 Text = "电平 0%    已收 0 包",
                 TextAlign = ContentAlignment.MiddleRight,
@@ -264,12 +267,70 @@ namespace PhoneMic
             };
             c1.Controls.Add(_lblMeter);
 
-            // ---------- 2. 本机地址 ----------
-            var c2 = Card(288, 104, "本机地址（手机自动发现，一般不用管）");
+            // ================= 2. 系统麦克风 + 自检 =================
+            var c2 = Card(322, 182, "别的软件用哪个麦克风（必须是 CABLE Output）");
+
+            _lblMicConsole = new Label
+            {
+                Location = new Point(CardPad, 48),
+                Size = new Size(c2.Width - CardPad * 2 - 120, 24),
+                Font = Ui(10f),
+                ForeColor = CSub,
+                Text = "默认设备：读取中…",
+                AutoEllipsis = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            c2.Controls.Add(_lblMicConsole);
+
+            var btnRefreshMic = FlatButton("重新读取", c2.Width - CardPad - 110, 46, 110, 32);
+            btnRefreshMic.Click += delegate { RefreshMicInfo(); };
+            c2.Controls.Add(btnRefreshMic);
+
+            _lblMicComm = new Label
+            {
+                Location = new Point(CardPad, 78),
+                Size = new Size(c2.Width - CardPad * 2, 24),
+                Font = Ui(10f),
+                ForeColor = CSub,
+                Text = "默认通信设备：读取中…",
+                AutoEllipsis = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            c2.Controls.Add(_lblMicComm);
+
+            _btnSelfTest = new Button
+            {
+                Text = "声卡自检（录 3 秒）",
+                Location = new Point(CardPad, 116),
+                Size = new Size(214, 40),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = CField,
+                ForeColor = CBlue,
+                Font = Ui(10f),
+                Cursor = Cursors.Hand
+            };
+            _btnSelfTest.FlatAppearance.BorderColor = Color.FromArgb(0x2C, 0x35, 0x40);
+            _btnSelfTest.Click += delegate { RunSelfTest(); };
+            c2.Controls.Add(_btnSelfTest);
+
+            c2.Controls.Add(new Label
+            {
+                Location = new Point(CardPad + 230, 122),
+                Size = new Size(c2.Width - CardPad * 2 - 230, 28),
+                Font = Ui(9f),
+                ForeColor = CSub,
+                Text = "点它，然后对着手机说话，看虚拟声卡里到底有没有声音",
+                AutoEllipsis = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            });
+
+            // ================= 3. 地址 + 输出设备 =================
+            var c3 = Card(518, 196, "本机地址 / 输出设备");
+
             _txtAddr = new TextBox
             {
-                Location = new Point(CardPad, 44),
-                Size = new Size(c2.Width - CardPad * 2 - 112, 30),
+                Location = new Point(CardPad, 50),
+                Size = new Size(c3.Width - CardPad * 2 - 112, 32),
                 ReadOnly = true,
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = CField,
@@ -278,17 +339,26 @@ namespace PhoneMic
                 Text = "…",
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            c2.Controls.Add(_txtAddr);
-            _btnCopy = FlatButton("复制", c2.Width - CardPad - 100, 44, 100, 30);
+            c3.Controls.Add(_txtAddr);
+            _btnCopy = FlatButton("复制", c3.Width - CardPad - 100, 50, 100, 32);
             _btnCopy.Click += delegate { CopyAddr(); };
-            c2.Controls.Add(_btnCopy);
+            c3.Controls.Add(_btnCopy);
 
-            // ---------- 3. 输出设备 ----------
-            var c3 = Card(406, 124, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
+            c3.Controls.Add(new Label
+            {
+                Location = new Point(CardPad, 98),
+                Size = new Size(c3.Width - CardPad * 2, 22),
+                Font = Ui(9.5f),
+                ForeColor = CSub,
+                Text = "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）",
+                AutoEllipsis = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            });
+
             _cboDevice = new ComboBox
             {
-                Location = new Point(CardPad, 44),
-                Size = new Size(c3.Width - CardPad * 2 - 112, 28),
+                Location = new Point(CardPad, 124),
+                Size = new Size(c3.Width - CardPad * 2 - 112, 30),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = CField,
@@ -298,15 +368,15 @@ namespace PhoneMic
             _cboDevice.SelectedIndexChanged += OnDeviceChanged;
             c3.Controls.Add(_cboDevice);
 
-            _btnRefresh = FlatButton("刷新", c3.Width - CardPad - 100, 43, 100, 30);
+            _btnRefresh = FlatButton("刷新", c3.Width - CardPad - 100, 123, 100, 32);
             _btnRefresh.Click += delegate { LoadDevices(); };
             c3.Controls.Add(_btnRefresh);
 
             _lblVb = new Label
             {
-                Location = new Point(CardPad, 86),
-                Size = new Size(c3.Width - CardPad * 2 - 176, 22),
-                Font = Ui(8.5f),
+                Location = new Point(CardPad, 164),
+                Size = new Size(c3.Width - CardPad * 2 - 200, 24),
+                Font = Ui(9f),
                 ForeColor = CAmber,
                 Text = "",
                 AutoEllipsis = true,
@@ -314,19 +384,20 @@ namespace PhoneMic
             };
             c3.Controls.Add(_lblVb);
 
-            _btnInstall = FlatButton("安装虚拟声卡", c3.Width - CardPad - 166, 83, 166, 28);
+            _btnInstall = FlatButton("安装虚拟声卡", c3.Width - CardPad - 190, 161, 190, 30);
             _btnInstall.ForeColor = CAmber;
             _btnInstall.Visible = false;
             _btnInstall.Click += delegate { InstallVb(); };
             c3.Controls.Add(_btnInstall);
 
-            // ---------- 4. 联动按键 ----------
-            var c4 = Card(544, 124, "说话时同时按住的键（不映射就留空）");
+            // ================= 4. 联动按键 =================
+            var c4 = Card(728, 152, "说话时同时按住的键（不映射就留空）");
+
             _lblKey = new Label
             {
-                Location = new Point(CardPad, 40),
-                Size = new Size(c4.Width - CardPad * 2 - 236, 32),
-                Font = Ui(13f, FontStyle.Bold),
+                Location = new Point(CardPad, 48),
+                Size = new Size(c4.Width - CardPad * 2 - 240, 36),
+                Font = Ui(14f, FontStyle.Bold),
                 ForeColor = CText,
                 Text = "（不映射）",
                 AutoEllipsis = true,
@@ -335,11 +406,11 @@ namespace PhoneMic
             };
             c4.Controls.Add(_lblKey);
 
-            _btnRecord = FlatButton("重新录制", c4.Width - CardPad - 212, 43, 100, 30);
+            _btnRecord = FlatButton("重新录制", c4.Width - CardPad - 214, 50, 100, 34);
             _btnRecord.Click += delegate { RecordKey(); };
             c4.Controls.Add(_btnRecord);
 
-            _btnClear = FlatButton("清除", c4.Width - CardPad - 102, 43, 90, 30);
+            _btnClear = FlatButton("清除", c4.Width - CardPad - 102, 50, 90, 34);
             _btnClear.Click += delegate
             {
                 _cfg.Keys = new int[0];
@@ -351,20 +422,20 @@ namespace PhoneMic
 
             c4.Controls.Add(new Label
             {
-                Location = new Point(CardPad, 86),
-                Size = new Size(c4.Width - CardPad * 2, 22),
-                Font = Ui(8.5f),
+                Location = new Point(CardPad, 102),
+                Size = new Size(c4.Width - CardPad * 2, 26),
+                Font = Ui(9f),
                 ForeColor = CSub,
                 Text = "点「重新录制」后直接在键盘上按一下；组合键就按住组合再按主键。",
                 AutoEllipsis = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
-            // ---------- 5. 选项 ----------
+            // ================= 5. 选项 =================
             var c5 = new Panel
             {
-                Location = new Point(Pad, 684),
-                Size = new Size(ClientSize.Width - Pad * 2, 30),
+                Location = new Point(Pad, 894),
+                Size = new Size(ClientSize.Width - Pad * 2, 32),
                 BackColor = CBg,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
@@ -374,7 +445,7 @@ namespace PhoneMic
                 Location = new Point(2, 6),
                 AutoSize = true,
                 ForeColor = CSub,
-                Font = Ui(9f),
+                Font = Ui(9.5f),
                 Checked = _cfg.MinimizeToTray
             };
             _chkMin.CheckedChanged += delegate { _cfg.MinimizeToTray = _chkMin.Checked; SaveCfg(); };
@@ -383,26 +454,26 @@ namespace PhoneMic
             _chkAuto = new CheckBox
             {
                 Text = "启动时自动开始监听",
-                Location = new Point(276, 6),
+                Location = new Point(300, 6),
                 AutoSize = true,
                 ForeColor = CSub,
-                Font = Ui(9f),
+                Font = Ui(9.5f),
                 Checked = _cfg.AutoStartOnLaunch
             };
             _chkAuto.CheckedChanged += delegate { _cfg.AutoStartOnLaunch = _chkAuto.Checked; SaveCfg(); };
             c5.Controls.Add(_chkAuto);
             Controls.Add(c5);
 
-            // ---------- 6. 开始 / 停止 ----------
+            // ================= 6. 开始 / 停止 =================
             _btnStart = new Button
             {
                 Text = "开 始",
-                Location = new Point(Pad, 722),
-                Size = new Size(ClientSize.Width - Pad * 2, 52),
+                Location = new Point(Pad, 934),
+                Size = new Size(ClientSize.Width - Pad * 2, 56),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = CBlue,
                 ForeColor = Color.White,
-                Font = Ui(12.5f, FontStyle.Bold),
+                Font = Ui(13f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
@@ -410,12 +481,12 @@ namespace PhoneMic
             _btnStart.Click += delegate { if (_running) StopAll(); else StartAll(); };
             Controls.Add(_btnStart);
 
-            // ---------- 7. 底部：最新一条日志，点开看全部 ----------
+            // ================= 7. 底部日志 =================
             _lblFoot = new Label
             {
-                Location = new Point(Pad + 2, 782),
-                Size = new Size(ClientSize.Width - Pad * 2 - 4, 18),
-                Font = Ui(8.5f),
+                Location = new Point(Pad + 2, 1000),
+                Size = new Size(ClientSize.Width - Pad * 2 - 4, 22),
+                Font = Ui(9f),
                 ForeColor = CSub,
                 Text = "点这里查看日志",
                 AutoEllipsis = true,
@@ -474,6 +545,113 @@ namespace PhoneMic
                 }
                 return Icon.FromHandle(bmp.GetHicon());
             }
+        }
+
+        // ==================== 系统麦克风显示 / 自检 ====================
+
+        private void RefreshMicInfo()
+        {
+            string console = AudioOutput.GetDefaultCaptureName(NAudio.CoreAudioApi.Role.Console);
+            string comm = AudioOutput.GetDefaultCaptureName(NAudio.CoreAudioApi.Role.Communications);
+
+            SetMicLine(_lblMicConsole, "默认设备", console);
+            SetMicLine(_lblMicComm, "默认通信设备", comm);
+
+            Log("系统麦克风 → 默认：" + (console ?? "无") + "；通信：" + (comm ?? "无"));
+        }
+
+        private static void SetMicLine(Label lbl, string caption, string name)
+        {
+            if (lbl == null) return;
+            if (string.IsNullOrEmpty(name))
+            {
+                lbl.Text = caption + "：读不到";
+                lbl.ForeColor = CAmber;
+                return;
+            }
+            bool ok = name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0;
+            lbl.Text = caption + "：" + name + (ok ? "   ✓" : "   ✗ 不是虚拟声卡");
+            lbl.ForeColor = ok ? CGreen : CAmber;
+        }
+
+        /// <summary>
+        /// 直接录 3 秒 CABLE Output，看虚拟声卡里到底有没有声音。
+        /// 这是分辨「声音没进虚拟声卡」和「别的软件选错麦克风」最直接的办法。
+        /// </summary>
+        private void RunSelfTest()
+        {
+            string devId = null;
+            try
+            {
+                foreach (var d in AudioOutput.ListCaptureDevices())
+                {
+                    if (d.Name != null && d.Name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        devId = d.Id;
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "读取录音设备失败：" + ex.Message, "声卡自检");
+                return;
+            }
+
+            if (devId == null)
+            {
+                MessageBox.Show(this, "系统里没有找到 CABLE Output。\n\n虚拟声卡可能没装好，点上面的「安装虚拟声卡」。",
+                    "声卡自检", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            _btnSelfTest.Enabled = false;
+            _btnSelfTest.Text = "录音中…请说话";
+            Log("声卡自检：开始录 3 秒 CABLE Output");
+
+            Task.Run(() =>
+            {
+                float peak = 0f;
+                string err = null;
+                try { peak = AudioOutput.CapturePeak(devId, 3000); }
+                catch (Exception ex) { err = ex.Message; }
+
+                Ui(() =>
+                {
+                    _btnSelfTest.Enabled = true;
+                    _btnSelfTest.Text = "声卡自检（录 3 秒）";
+
+                    if (err != null)
+                    {
+                        Log("声卡自检失败：" + err);
+                        MessageBox.Show(this, "自检失败：" + err, "声卡自检");
+                        return;
+                    }
+
+                    int pct = (int)(peak * 100);
+                    Log("声卡自检结果：虚拟声卡峰值 " + pct + "%");
+
+                    if (peak > 0.02f)
+                    {
+                        MessageBox.Show(this,
+                            "✓ 虚拟声卡里检测到声音，峰值 " + pct + "%。\n\n" +
+                            "说明手机的声音已经完整进到 CABLE 里了。\n" +
+                            "如果别的软件还是收不到，就是它自己的麦克风没选成\n" +
+                            "「CABLE Output」—— 去那个软件的语音设置里改。",
+                            "声卡自检", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show(this,
+                            "✗ 虚拟声卡里没有检测到声音（峰值 " + pct + "%）。\n\n" +
+                            "请检查：\n" +
+                            "1. 自检时手机是不是正在录音（手机上横幅要是红的）\n" +
+                            "2. 上面的「输出设备」是不是 CABLE Input\n" +
+                            "3. 手机麦克风有没有被静音或占用",
+                            "声卡自检", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                });
+            });
         }
 
         // ==================== 设备 ====================
@@ -537,7 +715,7 @@ namespace PhoneMic
                 Ui(() =>
                 {
                     Log(msg.Replace("\n", " "));
-                    if (ok) { LoadDevices(); MessageBox.Show(this, msg, "完成"); }
+                    if (ok) { LoadDevices(); RefreshMicInfo(); MessageBox.Show(this, msg, "完成"); }
                     else MessageBox.Show(this, msg, "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 });
             });
@@ -664,7 +842,7 @@ namespace PhoneMic
             if (a != null) a.AddMonoPcm(buf, Proto.AudioHeader, count);
 
             float lv = Rms(buf, Proto.AudioHeader, count);
-            if (lv > _peak) _peak = lv;      // 峰值，UI 定时器取走
+            if (lv > _peak) _peak = lv;
             _packets++;
 
             MarkConnected();
@@ -713,7 +891,6 @@ namespace PhoneMic
             if (_lblMeter != null)
                 _lblMeter.Text = "电平 " + (int)(p * 100) + "%    已收 " + _packets + " 包";
 
-            // 在录音、但 3 秒一点声音都没有 → 提醒（多半是手机麦克风被占用或静音）
             if (_talking && _audio != null)
             {
                 if (p < 0.005f)
@@ -853,7 +1030,6 @@ namespace PhoneMic
             _logBuf.Add(line);
             if (_logBuf.Count > 500) _logBuf.RemoveAt(0);
 
-            // 同时落盘，出问题时可以直接把文件发我
             try { File.AppendAllText(LogPath, line + Environment.NewLine, Encoding.UTF8); }
             catch { }
 
@@ -865,11 +1041,11 @@ namespace PhoneMic
             var f = new Form
             {
                 Text = "phoneMic 日志",
-                ClientSize = new Size(700, 480),
+                ClientSize = new Size(760, 520),
                 StartPosition = FormStartPosition.CenterParent,
                 BackColor = CBg,
                 ForeColor = CText,
-                Font = Ui(9.5f),
+                Font = Ui(10f),
                 MinimizeBox = false
             };
 
@@ -879,11 +1055,11 @@ namespace PhoneMic
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
                 Location = new Point(16, 16),
-                Size = new Size(f.ClientSize.Width - 32, f.ClientSize.Height - 76),
+                Size = new Size(f.ClientSize.Width - 32, f.ClientSize.Height - 80),
                 BackColor = CField,
                 ForeColor = CText,
                 BorderStyle = BorderStyle.None,
-                Font = new Font("Consolas", 9f),
+                Font = new Font("Consolas", 9.5f),
                 WordWrap = false,
                 Text = string.Join(Environment.NewLine, _logBuf.ToArray()),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
@@ -893,8 +1069,8 @@ namespace PhoneMic
             var btnCopy = new Button
             {
                 Text = "复制全部",
-                Location = new Point(16, f.ClientSize.Height - 48),
-                Size = new Size(120, 34),
+                Location = new Point(16, f.ClientSize.Height - 50),
+                Size = new Size(130, 36),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = CField,
                 ForeColor = CText,
@@ -907,8 +1083,8 @@ namespace PhoneMic
             var btnFile = new Button
             {
                 Text = "打开日志文件夹",
-                Location = new Point(148, f.ClientSize.Height - 48),
-                Size = new Size(150, 34),
+                Location = new Point(158, f.ClientSize.Height - 50),
+                Size = new Size(160, 36),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = CField,
                 ForeColor = CText,

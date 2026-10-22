@@ -140,5 +140,105 @@ namespace PhoneMic
             public string Name;
             public override string ToString() { return Name; }
         }
+
+        // ==================== 录音侧：用于「系统麦克风」显示与声卡自检 ====================
+
+        /// <summary>列出所有可用的录音设备</summary>
+        public static List<DevInfo> ListCaptureDevices()
+        {
+            var list = new List<DevInfo>();
+            using (var en = new MMDeviceEnumerator())
+            {
+                foreach (MMDevice d in en.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
+                    list.Add(new DevInfo { Id = d.ID, Name = d.FriendlyName });
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// 系统默认录音设备的名字。
+        /// Console = 普通程序默认用的；Communications = 通话/语音类程序（QQ、微信语音、会议软件）默认用的。
+        /// 这两个是**分开设置**的，很多人只改了前者，结果语音软件还是走的旧麦克风。
+        /// </summary>
+        public static string GetDefaultCaptureName(Role role)
+        {
+            try
+            {
+                using (var en = new MMDeviceEnumerator())
+                {
+                    var d = en.GetDefaultAudioEndpoint(DataFlow.Capture, role);
+                    return d != null ? d.FriendlyName : null;
+                }
+            }
+            catch { return null; }
+        }
+
+        /// <summary>在指定录音设备上录一小段，返回 0~1 的峰值</summary>
+        public static float CapturePeak(string deviceId, int milliseconds)
+        {
+            MMDevice dev;
+            using (var en = new MMDeviceEnumerator())
+            {
+                if (string.IsNullOrEmpty(deviceId))
+                    dev = en.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
+                else
+                    dev = en.GetDevice(deviceId);
+            }
+
+            float peak = 0f;
+            var sync = new object();
+
+            using (var cap = new WasapiCapture(dev))
+            {
+                WaveFormat fmt = cap.WaveFormat;
+                cap.DataAvailable += delegate(object s, WaveInEventArgs e)
+                {
+                    float local = ScanPeak(e.Buffer, e.BytesRecorded, fmt);
+                    lock (sync) { if (local > peak) peak = local; }
+                };
+                cap.StartRecording();
+                System.Threading.Thread.Sleep(milliseconds);
+                cap.StopRecording();
+            }
+            return peak;
+        }
+
+        /// <summary>扫描一段缓冲的绝对值峰值；WASAPI 常见是 32 位浮点或 16 位整数</summary>
+        private static float ScanPeak(byte[] buf, int count, WaveFormat fmt)
+        {
+            float max = 0f;
+
+            if (fmt.Encoding == WaveFormatEncoding.IeeeFloat && fmt.BitsPerSample == 32)
+            {
+                int n = count / 4;
+                for (int i = 0; i < n; i++)
+                {
+                    float v = Math.Abs(BitConverter.ToSingle(buf, i * 4));
+                    if (v > max) max = v;
+                }
+            }
+            else if (fmt.BitsPerSample == 32)
+            {
+                int n = count / 4;
+                for (int i = 0; i < n; i++)
+                {
+                    int raw = BitConverter.ToInt32(buf, i * 4);
+                    float v = Math.Abs((float)raw) / 2147483648f;
+                    if (v > max) max = v;
+                }
+            }
+            else if (fmt.BitsPerSample == 16)
+            {
+                int n = count / 2;
+                for (int i = 0; i < n; i++)
+                {
+                    short raw = BitConverter.ToInt16(buf, i * 2);
+                    float v = Math.Abs((float)raw) / 32768f;
+                    if (v > max) max = v;
+                }
+            }
+
+            return max > 1f ? 1f : max;
+        }
     }
 }
