@@ -62,6 +62,7 @@ namespace PhoneMic
         private TextBox _txtAddr;
         private ComboBox _cboDevice;
         private Button _btnCopy, _btnRefresh, _btnInstall, _btnRecord, _btnClear, _btnStart, _btnSelfTest;
+        private Button _btnSetMic, _btnRestoreMic;
         private CheckBox _chkMin, _chkAuto;
 
         public MainForm()
@@ -270,10 +271,15 @@ namespace PhoneMic
             // ================= 2. 系统麦克风 + 自检 =================
             var c2 = Card(322, 182, "别的软件用哪个麦克风（必须是 CABLE Output）");
 
+            var btnRefreshMic = FlatButton("重新读取", c2.Width - CardPad - 96, 11, 96, 26);
+            btnRefreshMic.Font = Ui(9f);
+            btnRefreshMic.Click += delegate { RefreshMicInfo(); };
+            c2.Controls.Add(btnRefreshMic);
+
             _lblMicConsole = new Label
             {
-                Location = new Point(CardPad, 48),
-                Size = new Size(c2.Width - CardPad * 2 - 120, 24),
+                Location = new Point(CardPad, 46),
+                Size = new Size(c2.Width - CardPad * 2 - 186, 26),
                 Font = Ui(10f),
                 ForeColor = CSub,
                 Text = "默认设备：读取中…",
@@ -282,14 +288,10 @@ namespace PhoneMic
             };
             c2.Controls.Add(_lblMicConsole);
 
-            var btnRefreshMic = FlatButton("重新读取", c2.Width - CardPad - 110, 46, 110, 32);
-            btnRefreshMic.Click += delegate { RefreshMicInfo(); };
-            c2.Controls.Add(btnRefreshMic);
-
             _lblMicComm = new Label
             {
                 Location = new Point(CardPad, 78),
-                Size = new Size(c2.Width - CardPad * 2, 24),
+                Size = new Size(c2.Width - CardPad * 2 - 186, 26),
                 Font = Ui(10f),
                 ForeColor = CSub,
                 Text = "默认通信设备：读取中…",
@@ -297,6 +299,17 @@ namespace PhoneMic
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             c2.Controls.Add(_lblMicComm);
+
+            _btnSetMic = FlatButton("设为默认麦克风", c2.Width - CardPad - 172, 44, 172, 32);
+            _btnSetMic.ForeColor = CGreen;
+            _btnSetMic.Click += delegate { SetAsDefaultMic(); };
+            c2.Controls.Add(_btnSetMic);
+
+            _btnRestoreMic = FlatButton("恢复原来的", c2.Width - CardPad - 172, 80, 172, 28);
+            _btnRestoreMic.Font = Ui(9f);
+            _btnRestoreMic.Click += delegate { RestorePrevMic(); };
+            _btnRestoreMic.Visible = false;
+            c2.Controls.Add(_btnRestoreMic);
 
             _btnSelfTest = new Button
             {
@@ -557,7 +570,108 @@ namespace PhoneMic
             SetMicLine(_lblMicConsole, "默认设备", console);
             SetMicLine(_lblMicComm, "默认通信设备", comm);
 
+            // 之前改过默认设备才显示「恢复」
+            bool changed = (console != null && console.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0)
+                        || (comm != null && comm.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (_btnRestoreMic != null)
+                _btnRestoreMic.Visible = changed && !string.IsNullOrEmpty(_cfg.PrevConsoleId + _cfg.PrevCommId);
+
             Log("系统麦克风 → 默认：" + (console ?? "无") + "；通信：" + (comm ?? "无"));
+        }
+
+        /// <summary>找系统里的 CABLE Output 设备 ID，找不到返回 null</summary>
+        private static string FindCableCaptureId()
+        {
+            try
+            {
+                foreach (var d in AudioOutput.ListCaptureDevices())
+                {
+                    if (d.Name != null && d.Name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return d.Id;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// 把 CABLE Output 设成系统默认麦克风。
+        /// 关键是**两个角色都要设**：只设「默认设备」的话，QQ / 语音输入这类走
+        /// 「默认通信设备」的程序依然收不到声音。
+        /// </summary>
+        private void SetAsDefaultMic()
+        {
+            string cableId = FindCableCaptureId();
+            if (cableId == null)
+            {
+                MessageBox.Show(this, "系统里没有找到 CABLE Output。\n\n虚拟声卡可能没装好。",
+                    "设为默认麦克风", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (MessageBox.Show(this,
+                    "会把系统的「默认设备」和「默认通信设备」都改成\nCABLE Output。\n\n" +
+                    "改完之后 QQ、微信语音、语音输入这些软件就都能收到手机的声音了。\n\n" +
+                    "注意：不开 phoneMic 的时候，这些软件会录到静音。\n" +
+                    "想改回来点旁边的「恢复原来的」。\n\n继续吗？",
+                    "设为默认麦克风", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
+                return;
+
+            // 先记下现在用的，方便一键还原
+            _cfg.PrevConsoleId = AudioDefault.GetDefaultCaptureId(NAudio.CoreAudioApi.Role.Console);
+            _cfg.PrevCommId = AudioDefault.GetDefaultCaptureId(NAudio.CoreAudioApi.Role.Communications);
+            SaveCfg();
+
+            try
+            {
+                AudioDefault.SetDefaultAll(cableId);
+                RefreshMicInfo();
+                Log("已把 CABLE Output 设为系统默认麦克风（含通信设备）");
+                MessageBox.Show(this,
+                    "设置完成。\n\n现在去 QQ / 语音输入软件里试一下，应该能收到声音了。\n" +
+                    "如果某个软件还不行，说明它自己单独保存过麦克风选择，\n" +
+                    "只能进那个软件的语音设置里手动改成 CABLE Output。",
+                    "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Log("设置默认麦克风失败：" + ex.Message);
+                MessageBox.Show(this,
+                    "设置失败：" + ex.Message +
+                    "\n\n可以手动改：Win+R 输入 mmsys.cpl →「录制」→ 右键 CABLE Output\n" +
+                    "→ 同时选「设为默认设备」和「设为默认通信设备」。",
+                    "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        /// <summary>还原到点「设为默认麦克风」之前用的设备</summary>
+        private void RestorePrevMic()
+        {
+            try
+            {
+                bool any = false;
+                if (!string.IsNullOrEmpty(_cfg.PrevConsoleId))
+                {
+                    AudioDefault.SetDefault(_cfg.PrevConsoleId, NAudio.CoreAudioApi.Role.Console);
+                    any = true;
+                }
+                if (!string.IsNullOrEmpty(_cfg.PrevCommId))
+                {
+                    AudioDefault.SetDefault(_cfg.PrevCommId, NAudio.CoreAudioApi.Role.Communications);
+                    any = true;
+                }
+                RefreshMicInfo();
+                Log(any ? "已恢复原来的默认麦克风" : "没有记录原来的设备");
+                MessageBox.Show(this,
+                    any ? "已恢复原来的默认麦克风。"
+                        : "没有记录到原来用的是哪个麦克风，请到声音设置里手动改。",
+                    "恢复", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "恢复失败：" + ex.Message, "提示",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private static void SetMicLine(Label lbl, string caption, string name)

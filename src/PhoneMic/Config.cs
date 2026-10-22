@@ -17,6 +17,10 @@ namespace PhoneMic
         public bool MinimizeToTray = true;        // 关窗口是否最小化到托盘
         public bool AutoStartOnLaunch = true;     // 启动即开始监听
 
+        // 「一键设为默认麦克风」之前系统用的设备，用来还原
+        public string PrevConsoleId = "";
+        public string PrevCommId = "";
+
         private static string Dir
         {
             get
@@ -50,6 +54,8 @@ namespace PhoneMic
                         case "keys": c.Keys = ParseKeys(v); break;
                         case "minimizeToTray": c.MinimizeToTray = v == "1"; break;
                         case "autoStart": c.AutoStartOnLaunch = v == "1"; break;
+                        case "prevConsole": c.PrevConsoleId = v; break;
+                        case "prevComm": c.PrevCommId = v; break;
                     }
                 }
             }
@@ -67,6 +73,8 @@ namespace PhoneMic
                 sb.AppendLine("keys=" + FormatKeys(Keys));
                 sb.AppendLine("minimizeToTray=" + (MinimizeToTray ? "1" : "0"));
                 sb.AppendLine("autoStart=" + (AutoStartOnLaunch ? "1" : "0"));
+                sb.AppendLine("prevConsole=" + PrevConsoleId);
+                sb.AppendLine("prevComm=" + PrevCommId);
                 File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
             }
             catch { }
