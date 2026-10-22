@@ -40,20 +40,25 @@ jobs:
           # 把 VB-CABLE 官方安装包原样放进 driver 目录（离线可用）。
           # 许可允许「原样分发」（AS IS），所以这里不加任何修改；
           # 我们的程序只负责解压并打开它自己的安装界面。
-          New-Item -ItemType Directory -Force -Path "$out/driver" | Out-Null
-          $vbc = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip"
-          Invoke-WebRequest -Uri $vbc -OutFile "$out/driver/VBCABLE_Driver_Pack43.zip" -UseBasicParsing
-          @"
-VB-CABLE 虚拟声卡驱动（VB-Audio 官方原版，未做任何修改）
-来源：https://vb-audio.com/Cable/
-VB-CABLE 是 donationware（自愿捐赠），欢迎支持作者。
+          $driver = Join-Path $out "driver"
+          New-Item -ItemType Directory -Force -Path $driver | Out-Null
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" `
+            -OutFile (Join-Path $driver "VBCABLE_Driver_Pack43.zip")
 
-用途：Windows 没有内置的「可写入式麦克风」，必须由虚拟声卡做中转。
-本程序把声音写进 CABLE Input，其他软件把 CABLE Output 当麦克风即可。
-
-安装：程序里点「安装虚拟声卡」，会打开官方 Setup，点 Install Driver 后重启一次。
-卸载：托盘菜单 →「彻底卸载（含虚拟声卡）」。
-"@ | Out-File -FilePath "$out/driver/说明.txt" -Encoding utf8
+          # 许可要求分发时注明来源与 donationware 性质
+          $note = @(
+            "VB-CABLE virtual audio driver (VB-Audio official package, unmodified)",
+            "Source: https://vb-audio.com/Cable/",
+            "VB-CABLE is donationware - please consider supporting the author.",
+            "",
+            "Why it is needed: Windows has no built-in writable microphone.",
+            "phoneMic writes audio into CABLE Input; other apps use CABLE Output as a mic.",
+            "",
+            "Install: click 'Install virtual audio card' in phoneMic, then Install Driver, then reboot.",
+            "Remove : tray menu -> 'Uninstall everything (including virtual cable)'."
+          )
+          $note | Out-File -FilePath (Join-Path $driver "README.txt") -Encoding utf8
 
           Compress-Archive -Path "$out/*" -DestinationPath "phoneMic-windows.zip" -Force
           Get-ChildItem $out -Recurse -File | Select-Object FullName, Length
