@@ -36,8 +36,27 @@ jobs:
             "System.Security.AccessControl.dll", "System.Security.Principal.Windows.dll"
           )
           foreach ($f in $keep) { Copy-Item "$bin/$f" $out }
+
+          # 把 VB-CABLE 官方安装包原样放进 driver 目录（离线可用）。
+          # 许可允许「原样分发」（AS IS），所以这里不加任何修改；
+          # 我们的程序只负责解压并打开它自己的安装界面。
+          New-Item -ItemType Directory -Force -Path "$out/driver" | Out-Null
+          $vbc = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip"
+          Invoke-WebRequest -Uri $vbc -OutFile "$out/driver/VBCABLE_Driver_Pack43.zip" -UseBasicParsing
+          @"
+VB-CABLE 虚拟声卡驱动（VB-Audio 官方原版，未做任何修改）
+来源：https://vb-audio.com/Cable/
+VB-CABLE 是 donationware（自愿捐赠），欢迎支持作者。
+
+用途：Windows 没有内置的「可写入式麦克风」，必须由虚拟声卡做中转。
+本程序把声音写进 CABLE Input，其他软件把 CABLE Output 当麦克风即可。
+
+安装：程序里点「安装虚拟声卡」，会打开官方 Setup，点 Install Driver 后重启一次。
+卸载：托盘菜单 →「彻底卸载（含虚拟声卡）」。
+"@ | Out-File -FilePath "$out/driver/说明.txt" -Encoding utf8
+
           Compress-Archive -Path "$out/*" -DestinationPath "phoneMic-windows.zip" -Force
-          Get-ChildItem $out | Select-Object Name, Length
+          Get-ChildItem $out -Recurse -File | Select-Object FullName, Length
           Write-Host "压缩包大小: $([math]::Round((Get-Item phoneMic-windows.zip).Length/1KB,0)) KB"
 
       - name: 上传产物

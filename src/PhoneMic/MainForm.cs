@@ -424,26 +424,34 @@ namespace PhoneMic
         {
             bool ok = VbCable.IsInstalled();
             _btnInstall.Visible = !ok;
-            _lblVb.Text = ok ? "已检测到虚拟声卡" : "未检测到虚拟声卡，点右边安装（约 1MB）";
+            _lblVb.Text = ok
+                ? "已检测到虚拟声卡"
+                : (VbCable.HasBundled ? "未检测到虚拟声卡，点右边安装（驱动已内置）"
+                                      : "未检测到虚拟声卡，点右边安装（需联网下载）");
             _lblVb.ForeColor = ok ? CGreen : CAmber;
         }
 
         private void InstallVb()
         {
+            string extra = VbCable.HasBundled
+                ? "驱动已随本程序附带，不需要联网。\n\n"
+                : "将从官方地址下载驱动（约 1MB）。\n\n";
+
             if (MessageBox.Show(this,
-                    "将下载并安装 VB-CABLE 虚拟声卡（约 1MB，官方免费）。\n\n" +
-                    "· 会弹出一次管理员授权，装驱动必须\n" +
+                    "接下来会打开 VB-CABLE 官方安装程序。\n\n" + extra +
+                    "· 会弹一次管理员授权（装驱动必须）\n" +
+                    "· 在它的窗口里点一下「Install Driver」即可\n" +
                     "· 装完建议重启一次电脑\n" +
                     "· 不会改变你现有的默认扬声器/麦克风\n\n继续吗？",
                     "安装虚拟声卡", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
                 return;
 
-            Log("正在下载虚拟声卡…");
+            Log(VbCable.HasBundled ? "正在准备内置驱动…" : "正在下载驱动…");
             VbCable.InstallAsync((ok, msg) =>
             {
                 BeginInvoke(new Action(() =>
                 {
-                    Log(msg);
+                    Log(msg.Replace("\n", " "));
                     if (ok) { LoadDevices(); MessageBox.Show(this, msg, "完成"); }
                     else MessageBox.Show(this, msg, "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }));

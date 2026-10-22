@@ -20,6 +20,13 @@ namespace PhoneMic
     {
         public const string DownloadUrl = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip";
         private const string InstallDir = @"C:\Program Files\VB\CABLE";
+        private const string BundleName = "VBCABLE_Driver_Pack43.zip";
+
+        /// <summary>发行包里是否带了驱动（随包放在 driver 目录）</summary>
+        public static bool HasBundled
+        {
+            get { return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "driver", BundleName)); }
+        }
 
         /// <summary>系统里是否存在虚拟声卡（播放设备或录音设备里带 CABLE）</summary>
         public static bool IsInstalled()
@@ -37,7 +44,12 @@ namespace PhoneMic
         }
 
         /// <summary>
-        /// 下载并静默安装。会弹出一次 UAC（装驱动必须有管理员权限）。
+        /// 解压驱动包并启动 VB-CABLE 官方安装程序（会弹一次 UAC）。
+        ///
+        /// 为什么不静默安装：VB-CABLE 的许可允许「原样分发」，但明确写了
+        /// 「不允许把它集成进别的软件的安装流程」（未经作者同意）。
+        /// 所以这里只负责解压 + 打开官方 Setup，由用户在他自己的窗口里点 Install，
+        /// 走的是官方安装流程，既离线又不越界。
         /// </summary>
         public static void InstallAsync(Action<bool, string> done)
         {
@@ -49,11 +61,20 @@ namespace PhoneMic
                     if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
                     Directory.CreateDirectory(tmp);
 
-                    string zip = Path.Combine(tmp, "vbcable.zip");
-                    using (var wc = new WebClient())
+                    string zip = Path.Combine(tmp, BundleName);
+                    string bundled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "driver", BundleName);
+
+                    if (File.Exists(bundled))
                     {
-                        wc.Headers.Add("User-Agent", "phoneMic");
-                        wc.DownloadFile(DownloadUrl, zip);
+                        File.Copy(bundled, zip, true);       // 用随包带的，离线可用
+                    }
+                    else
+                    {
+                        using (var wc = new WebClient())
+                        {
+                            wc.Headers.Add("User-Agent", "phoneMic");
+                            wc.DownloadFile(DownloadUrl, zip);
+                        }
                     }
                     ZipFile.ExtractToDirectory(zip, tmp);
 
@@ -61,22 +82,28 @@ namespace PhoneMic
                     if (!File.Exists(setup)) setup = Path.Combine(tmp, "VBCABLE_Setup.exe");
                     if (!File.Exists(setup))
                     {
-                        done(false, "下载包已解压，但没找到安装程序，请手动运行：" + tmp);
+                        done(false, "驱动包已解压，但没找到安装程序，请手动运行：" + tmp);
                         return;
                     }
 
                     var psi = new ProcessStartInfo
                     {
                         FileName = setup,
-                        Arguments = "-i -h",           // -i 安装，-h 隐藏界面（静默）
                         UseShellExecute = true,
-                        Verb = "runas",                // 以管理员身份运行
+                        Verb = "runas",                  // 装驱动必须管理员
                         WorkingDirectory = tmp
                     };
                     var p = Process.Start(psi);
-                    if (p != null) p.WaitForExit(180000);
+                    if (p != null) p.WaitForExit(300000);
 
-                    done(true, "虚拟声卡已安装。建议重启一次电脑，让音频设备生效。");
+                    // 官方安装程序退出后再判断一次，比单纯说「装好了」准确
+                    System.Threading.Thread.Sleep(1500);
+                    if (IsInstalled())
+                        done(true, "虚拟声卡已安装。建议重启一次电脑，让音频设备生效。");
+                    else
+                        done(false, "安装程序已退出，但还没检测到虚拟声卡。\n\n" +
+                                    "如果刚装完，重启一次电脑再看；\n" +
+                                    "也可以手动运行：" + tmp + "\\VBCABLE_Setup_x64.exe");
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
