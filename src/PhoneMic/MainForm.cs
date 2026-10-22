@@ -421,9 +421,26 @@ namespace PhoneMic
         {
             var a = _audio;
             if (a != null) a.Clear();
-            lock (_keyLock) KeyInjector.Press(_cfg.Keys);
+
+            bool ok = true;
+            lock (_keyLock) ok = KeyInjector.Press(_cfg.Keys);
+
             MarkConnected();
             Ui(() => { _silentTicks = 0; SetTalking(true); });
+
+            bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
+            if (hasKeys)
+            {
+                if (ok)
+                {
+                    string desc = KeyInjector.Describe(_cfg.Keys);
+                    Ui(() => Log("按下：" + desc));
+                }
+                else
+                {
+                    Ui(() => Log("按键注入被系统拒绝 —— 如果目标程序是以管理员运行的，本程序也要用管理员身份启动"));
+                }
+            }
         }
 
         private void OnPttUp()

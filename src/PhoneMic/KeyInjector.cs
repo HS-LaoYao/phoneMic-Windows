@@ -61,25 +61,30 @@ namespace PhoneMic
 
         /// <summary>
         /// 按下整组键（按配置顺序依次按下，例如先 Ctrl 再 Alt 再 Space）。
+        /// 返回 false 表示系统拒绝了这次注入（比如目标窗口以管理员运行）。
         /// </summary>
-        public static void Press(int[] keys)
+        public static bool Press(int[] keys)
         {
-            if (keys == null || keys.Length == 0) return;
-            if (_held && SameKeys(keys)) return;      // 已经按着了，不重复
+            if (keys == null || keys.Length == 0) return true;
+            if (_held && SameKeys(keys)) return true;     // 已经按着了，不重复
 
-            ReleaseAll();                              // 万一之前按的是别的组合，先松开
-            foreach (int vk in keys) Send(vk, true);
+            ReleaseAll();                                 // 万一之前按的是别的组合，先松开
+            bool ok = true;
+            foreach (int vk in keys) ok &= Send(vk, true);
             _heldKeys = keys;
             _held = true;
+            return ok;
         }
 
         /// <summary>松开整组键（逆序松开）</summary>
-        public static void ReleaseAll()
+        public static bool ReleaseAll()
         {
-            if (!_held) return;
-            for (int i = _heldKeys.Length - 1; i >= 0; i--) Send(_heldKeys[i], false);
+            if (!_held) return true;
+            bool ok = true;
+            for (int i = _heldKeys.Length - 1; i >= 0; i--) ok &= Send(_heldKeys[i], false);
             _heldKeys = new int[0];
             _held = false;
+            return ok;
         }
 
         public static bool IsHeld { get { return _held; } }
@@ -91,11 +96,54 @@ namespace PhoneMic
             return true;
         }
 
-        private static void Send(int vk, bool down)
+        /// <summary>
+        /// 把「左右修饰键」换成通用键。
+        ///
+        /// 关键点：VK_LMENU(0xA4) / VK_RMENU(0xA5) 这类左右专用键，直接丢给
+        /// MapVirtualKey 有可能返回 0。这样一来发出去的就是「扫描码 = 0」的
+        /// 无效事件 —— 表现就是按了完全没反应。所以先换成 VK_MENU(0x12) 再取扫描码，
+        /// 右手的键额外加扩展标志。
+        /// </summary>
+        private static void ToBaseKey(int vk, out int baseVk, out bool extended)
         {
-            uint sc = MapVirtualKey((uint)vk, 0);
-            uint flags = KEYEVENTF_SCANCODE;
-            if (IsExtended(vk)) flags |= KEYEVENTF_EXTENDEDKEY;
+            extended = false;
+            baseVk = vk;
+            switch (vk)
+            {
+                case 0xA0: baseVk = 0x10; break;                    // 左 Shift
+                case 0xA1: baseVk = 0x10; extended = true; break;   // 右 Shift
+                case 0xA2: baseVk = 0x11; break;                    // 左 Ctrl
+                case 0xA3: baseVk = 0x11; extended = true; break;   // 右 Ctrl
+                case 0xA4: baseVk = 0x12; break;                    // 左 Alt
+                case 0xA5: baseVk = 0x12; extended = true; break;   // 右 Alt
+                default: extended = IsExtended(vk); break;
+            }
+        }
+
+        private static bool Send(int vk, bool down)
+        {
+            int baseVk;
+            bool ext;
+            ToBaseKey(vk, out baseVk, out ext);
+
+            uint sc = MapVirtualKey((uint)baseVk, 0);
+            uint flags;
+            ushort wVk, wScan;
+
+            if (sc != 0)
+            {
+                wVk = 0;                      // 用扫描码时 wVk 必须为 0
+                wScan = (ushort)sc;
+                flags = KEYEVENTF_SCANCODE;
+                if (ext) flags |= KEYEVENTF_EXTENDEDKEY;
+            }
+            else
+            {
+                // 取不到扫描码就退回用虚拟键码，总比发一串无效事件强
+                wVk = (ushort)baseVk;
+                wScan = 0;
+                flags = 0;
+            }
             if (!down) flags |= KEYEVENTF_KEYUP;
 
             var input = new INPUT
@@ -105,8 +153,8 @@ namespace PhoneMic
                 {
                     ki = new KEYBDINPUT
                     {
-                        wVk = 0,                    // 用扫描码时 wVk 必须为 0
-                        wScan = (ushort)sc,
+                        wVk = wVk,
+                        wScan = wScan,
                         dwFlags = flags,
                         time = 0,
                         dwExtraInfo = IntPtr.Zero
@@ -115,7 +163,7 @@ namespace PhoneMic
             };
             var arr = new INPUT[1];
             arr[0] = input;
-            SendInput(1, arr, Marshal.SizeOf(typeof(INPUT)));
+            return SendInput(1, arr, Marshal.SizeOf(typeof(INPUT))) == 1;
         }
 
         /// <summary>这些键要用「扩展键」标志，否则会被当成小键盘上对应的键</summary>
