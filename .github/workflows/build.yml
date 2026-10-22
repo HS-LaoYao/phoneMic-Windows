@@ -62,9 +62,29 @@ jobs:
 
           Compress-Archive -Path "$out/*" -DestinationPath "phoneMic-windows.zip" -Force
           Get-ChildItem $out -Recurse -File | Select-Object FullName, Length
-          Write-Host "压缩包大小: $([math]::Round((Get-Item phoneMic-windows.zip).Length/1KB,0)) KB"
+          Write-Host "绿色包大小: $([math]::Round((Get-Item phoneMic-windows.zip).Length/1KB,0)) KB"
 
-      - name: 上传产物
+      - name: 安装 Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: 生成安装包（单文件 exe）
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
+          & $iscc "installer\phoneMic.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup 编译失败" }
+          Get-ChildItem dist | Select-Object Name, Length
+          Write-Host "安装包大小: $([math]::Round((Get-Item dist/phoneMic-setup.exe).Length/1MB,2)) MB"
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoneMic-setup
+          path: dist/phoneMic-setup.exe
+          retention-days: 30
+
+      - name: 上传绿色包
         uses: actions/upload-artifact@v4
         with:
           name: phoneMic-windows

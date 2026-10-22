@@ -17,17 +17,27 @@
 
 ## 安装
 
-1. 把 `phoneMic-windows.zip` 解压到任意目录（绿色软件，不写注册表）
-2. 双击 `PhoneMic.exe`
-3. 如果下拉框提示「未检测到虚拟声卡」，点右边的**安装虚拟声卡**：
-   - 驱动已随包附带（`driver\` 目录，**不需要联网**）
-   - 会打开 VB-CABLE 官方安装程序，点一下 **Install Driver**
-   - 会弹一次管理员授权（装驱动必须），装完**建议重启一次电脑**
-4. 重启后打开本程序，输出设备选 **CABLE Input (VB-Audio Virtual Cable)**
-5. 在你自己的语音输入软件里，把麦克风选成 **CABLE Output (VB-Audio Virtual Cable)**
+**双击 `phoneMic-setup.exe` → 下一步 → 完成。** 就这么简单，不用解压。
+
+安装过程中：
+- 勾选「同时安装虚拟声卡 VB-CABLE」（默认勾上）→ 装完会自动打开 VB-CABLE 官方安装程序，点一下 **Install Driver**
+- 会弹一次管理员授权（装驱动必须）
+- 装完**建议重启一次电脑**
+- 安装包是单文件，驱动已经打包在里面，**全程不需要联网**
+
+装好后：
+1. 打开 phoneMic，输出设备会自动选中 **CABLE Input (VB-Audio Virtual Cable)**
+2. 在你的语音输入软件里，把麦克风选成 **CABLE Output (VB-Audio Virtual Cable)**
 
 > VB-CABLE 不会改你的默认扬声器/麦克风，只是多出两个设备，不影响现有音频。
 > 驱动是 VB-Audio 官方原版，未做任何修改（许可允许原样分发）。
+
+<details>
+<summary>也可以不安装，用绿色版（解压即用）</summary>
+
+`phoneMic-windows.zip` 解压到任意目录，双击 `PhoneMic.exe`。
+功能和安装版完全一样，只是没有快捷方式，卸载时直接删文件夹。
+</details>
 
 ---
 

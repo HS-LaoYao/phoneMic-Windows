@@ -71,7 +71,29 @@ namespace PhoneMic
             SetStatus("未开始", CSub, "点下面的「开始」按钮");
 
             Log("phoneMic 已启动。手机和电脑连同一个 WiFi 即可。");
-            if (_cfg.AutoStartOnLaunch) BeginInvoke(new Action(StartAll));
+            // 注意：这里绝对不能调 BeginInvoke —— 构造函数执行时窗口句柄还没创建，
+            // 会抛「在创建窗口句柄之前，不能在控件上调用 Invoke 或 BeginInvoke」。
+            // 自动启动放到 OnShown 里做。
+        }
+
+        /// <summary>
+        /// 统一把动作切回 UI 线程。
+        /// 音频/网络回调都在工作线程上，直接碰控件会崩；而且窗口还没创建句柄时
+        /// BeginInvoke 会抛异常，这里统一兜住。
+        /// </summary>
+        private void Ui(Action action)
+        {
+            if (action == null) return;
+            if (!IsHandleCreated || IsDisposed) return;
+            try { BeginInvoke(action); }
+            catch (InvalidOperationException) { }
+            catch (ObjectDisposedException) { }
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (_cfg.AutoStartOnLaunch) StartAll();
         }
 
         // ==================== 界面搭建 ====================
@@ -449,12 +471,12 @@ namespace PhoneMic
             Log(VbCable.HasBundled ? "正在准备内置驱动…" : "正在下载驱动…");
             VbCable.InstallAsync((ok, msg) =>
             {
-                BeginInvoke(new Action(() =>
+                Ui(() =>
                 {
                     Log(msg.Replace("\n", " "));
                     if (ok) { LoadDevices(); MessageBox.Show(this, msg, "完成"); }
                     else MessageBox.Show(this, msg, "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }));
+                });
             });
         }
 
@@ -468,11 +490,11 @@ namespace PhoneMic
             StopAll();
             VbCable.UninstallAsync((ok, msg) =>
             {
-                BeginInvoke(new Action(() =>
+                Ui(() =>
                 {
                     MessageBox.Show(this, msg, ok ? "卸载完成" : "提示",
                         MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-                }));
+                });
             });
         }
 
@@ -502,7 +524,7 @@ namespace PhoneMic
             _rx.PttDown += OnPttDown;
             _rx.PttUp += OnPttUp;
             _rx.Heartbeat += OnHeartbeat;
-            _rx.Discovered += delegate(string ip) { BeginInvoke(new Action(() => Log("手机正在查找本机：" + ip))); };
+            _rx.Discovered += delegate(string ip) { Ui(() => Log("手机正在查找本机：" + ip)); };
             try
             {
                 _rx.Start();
@@ -531,7 +553,7 @@ namespace PhoneMic
             {
                 StopAudio();
                 _audio = new AudioOutput();
-                _audio.Error += delegate(string m) { BeginInvoke(new Action(() => Log(m))); };
+                _audio.Error += delegate(string m) { Ui(() => Log(m)); };
                 _audio.Start(_cfg.DeviceId);
                 return true;
             }
@@ -581,13 +603,13 @@ namespace PhoneMic
             if (a != null) a.Clear();             // 丢掉缓冲里的旧声音，避免开口时说半句旧的
             lock (_keyLock) KeyInjector.Press(_cfg.Keys);
             MarkConnected();
-            BeginInvoke(new Action(() => SetTalking(true)));
+            Ui(() => SetTalking(true));
         }
 
         private void OnPttUp()
         {
             lock (_keyLock) KeyInjector.ReleaseAll();
-            BeginInvoke(new Action(() => SetTalking(false)));
+            Ui(() => SetTalking(false));
         }
 
         private void OnHeartbeat(int mode)
@@ -599,13 +621,13 @@ namespace PhoneMic
         {
             if (_connected) return;
             _connected = true;
-            BeginInvoke(new Action(() =>
+            Ui(() =>
             {
                 if (!_talking)
                     SetStatus("已连接 · 待命", CGreen,
                         "手机：" + (_rx != null ? _rx.PeerIp : "") + "　在手机上按住按钮说话");
                 Log("手机已连接：" + (_rx != null ? _rx.PeerIp : ""));
-            }));
+            });
         }
 
         // ==================== 界面状态 ====================
@@ -664,7 +686,7 @@ namespace PhoneMic
             _cap = new KeyCapture();
             _cap.Captured += delegate(int[] keys)
             {
-                BeginInvoke(new Action(() =>
+                Ui(() =>
                 {
                     // 单独按 Esc 视为取消，避免误录
                     if (keys.Length == 1 && keys[0] == 0x1B)
@@ -682,7 +704,7 @@ namespace PhoneMic
                     _btnRecord.Text = "重新录制";
                     _btnRecord.Enabled = true;
                     UpdateKeyLabel();
-                }));
+                });
             };
             _cap.Start();
         }
