@@ -86,8 +86,7 @@ namespace PhoneMic
             if (action == null) return;
             if (!IsHandleCreated || IsDisposed) return;
             try { BeginInvoke(action); }
-            catch (InvalidOperationException) { }
-            catch (ObjectDisposedException) { }
+            catch (Exception) { }   // 窗口正在销毁时忽略，绝不能因此让程序崩掉
         }
 
         protected override void OnShown(EventArgs e)
