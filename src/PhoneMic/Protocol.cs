@@ -27,6 +27,7 @@ namespace PhoneMic
         public const byte TPttDown = 0x10;
         public const byte TPttUp = 0x11;
         public const byte THeartbeat = 0x12;
+        public const byte TAck = 0x22;
         public const byte TDiscover = 0x20;
         public const byte TDiscoverAck = 0x21;
 

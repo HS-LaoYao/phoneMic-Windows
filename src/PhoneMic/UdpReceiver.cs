@@ -99,7 +99,12 @@ namespace PhoneMic
                         break;
 
                     case Proto.THeartbeat:
-                        { var h = Heartbeat; if (h != null) h(data.Length > 1 ? data[1] : 0); }
+                        {
+                            // 心跳要回一个应答：手机靠它判断电脑还活着。
+                            // 不回的话电脑关了，手机上仍显示「已连接」，容易误判。
+                            try { _udp.Send(new byte[] { Proto.TAck }, 1, ep); } catch { }
+                            var h = Heartbeat; if (h != null) h(data.Length > 1 ? data[1] : 0);
+                        }
                         break;
 
                     case Proto.TDiscover:
