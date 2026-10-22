@@ -28,8 +28,14 @@ jobs:
           $bin = "src/PhoneMic/bin/Release/net48"
           $out = "out/phoneMic"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item "$bin/*.exe" $out
-          Copy-Item "$bin/*.dll" $out
+          # 只带真正用到的文件：NAudio 的 Asio / Midi / WinForms 模块本程序不用，去掉省 120KB
+          $keep = @(
+            "PhoneMic.exe",
+            "NAudio.dll", "NAudio.Core.dll", "NAudio.Wasapi.dll",
+            "Microsoft.Win32.Registry.dll",
+            "System.Security.AccessControl.dll", "System.Security.Principal.Windows.dll"
+          )
+          foreach ($f in $keep) { Copy-Item "$bin/$f" $out }
           Compress-Archive -Path "$out/*" -DestinationPath "phoneMic-windows.zip" -Force
           Get-ChildItem $out | Select-Object Name, Length
           Write-Host "压缩包大小: $([math]::Round((Get-Item phoneMic-windows.zip).Length/1KB,0)) KB"
