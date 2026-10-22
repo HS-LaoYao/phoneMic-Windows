@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PhoneMic</AssemblyName>
+    <RootNamespace>PhoneMic</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <!-- 目标是 .NET Framework 4.8：Win11 自带，不需要装任何运行时 -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Company>phoneMic</Company>
+    <Product>phoneMic</Product>
+    <AssemblyTitle>phoneMic</AssemblyTitle>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- net48 用传统引用方式最稳，不依赖 SDK 的 UseWindowsForms 推断 -->
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net.Http" />
+    <!-- 解压 VB-CABLE 下载包用 -->
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 只用一个第三方库：NAudio 负责 WASAPI 播放到指定虚拟声卡 -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- 让 net48 在没装 .NET Framework SDK 的机器/CI 上也能编译 -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
