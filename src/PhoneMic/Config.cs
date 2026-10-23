@@ -21,6 +21,7 @@ namespace PhoneMic
         // ===== 作用窗口：选定程序后，说话前自动把它切到前台 =====
         public string TargetExe = "";             // 目标进程名（不含 .exe），空 = 跟随当前前台窗口
         public string TargetTitle = "";           // 窗口标题片段，同名进程多开时用来定位
+        public int DeliveryMode = 0;                 // 投递方式：0后台 1后台+子窗口 2切前台 3两条路
 
         // ===== 音频路由 =====
         public int RouteMode = 1;                 // 1=只当麦克风 2=麦克风+监听 3=手机当耳机
@@ -67,6 +68,7 @@ namespace PhoneMic
                         case "keyMode": c.KeyMode = int.TryParse(v, out int km) ? km : 0; break;
                         case "targetExe": c.TargetExe = v; break;
                         case "targetTitle": c.TargetTitle = v; break;
+                        case "deliveryMode": c.DeliveryMode = int.TryParse(v, out int dm) ? dm : 0; break;
                         case "routeMode": c.RouteMode = int.TryParse(v, out int rm) ? rm : 1; break;
                         case "monitorVolume": c.MonitorVolume = int.TryParse(v, out int mv) ? mv : 60; break;
                         case "mutePcInHeadset": c.MutePcInHeadset = v == "1"; break;
@@ -93,6 +95,7 @@ namespace PhoneMic
                 sb.AppendLine("keyMode=" + KeyMode);
                 sb.AppendLine("targetExe=" + TargetExe);
                 sb.AppendLine("targetTitle=" + TargetTitle);
+                sb.AppendLine("deliveryMode=" + DeliveryMode);
                 sb.AppendLine("routeMode=" + RouteMode);
                 sb.AppendLine("monitorVolume=" + MonitorVolume);
                 sb.AppendLine("mutePcInHeadset=" + (MutePcInHeadset ? "1" : "0"));

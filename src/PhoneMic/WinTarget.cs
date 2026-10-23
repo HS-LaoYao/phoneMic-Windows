@@ -70,6 +70,8 @@ namespace PhoneMic
         private static extern uint GetCurrentThreadId();
         [DllImport("user32.dll")]
         private static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
+        [DllImport("user32.dll")]
+        private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc cb, IntPtr l);
 
         private const uint GW_OWNER = 4;
         private const int GWL_EXSTYLE = -20;
@@ -124,6 +126,23 @@ namespace PhoneMic
             }, IntPtr.Zero);
 
             list.Sort((a, b) => string.Compare(a.Exe, b.Exe, StringComparison.OrdinalIgnoreCase));
+            return list;
+        }
+
+        /// <summary>
+        /// 它的可见子窗口。有些程序（自绘界面 / Electron）真正处理键盘的不是顶层窗口，
+        /// 而是里面的子窗口，只投顶层可能根本没送到地方。
+        /// </summary>
+        public static List<IntPtr> Children(IntPtr parent)
+        {
+            var list = new List<IntPtr>();
+            if (parent == IntPtr.Zero) return list;
+            EnumChildWindows(parent, delegate (IntPtr h, IntPtr l)
+            {
+                try { if (list.Count < 12 && IsWindowVisible(h)) list.Add(h); }
+                catch { }
+                return true;
+            }, IntPtr.Zero);
             return list;
         }
 

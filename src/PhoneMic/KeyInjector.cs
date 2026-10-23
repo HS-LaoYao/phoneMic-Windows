@@ -86,8 +86,29 @@ namespace PhoneMic
         /// <summary>目标窗口标题片段，用于同名进程开多个窗口时二次定位。可空</summary>
         public static string TargetTitle = "";
 
+        /// <summary>
+        /// 投递方式。后台投递对自绘界面 / 走 Raw Input 的程序常常无效，
+        /// 所以把几种办法都留着，谁管用谁 —— 没法自动判断，只能让用户试。
+        /// </summary>
+        public enum Deliver
+        {
+            /// <summary>只投给目标窗口（顶层），不抢焦点</summary>
+            Background = 0,
+            /// <summary>投给目标窗口**和它的子窗口**，不抢焦点（对 Electron / 自绘界面更可能生效）</summary>
+            BackgroundDeep = 1,
+            /// <summary>先切到前台再发真实按键，松手后切回 —— 万能，但焦点会跳</summary>
+            Foreground = 2,
+            /// <summary>两条路一起走（发送键只走真实按键，避免连发两条）</summary>
+            Both = 3
+        }
+
+        public static Deliver Delivery = Deliver.Background;
+
         private static IntPtr _targetHwnd;
         private static int _targetAt;
+        private static IntPtr _prevFg;      // 「切前台」模式下，松手后要切回去的窗口
+        private static bool _inPress;       // Press 内部会先 ReleaseAll 一次，那次不算松手
+        private static bool _inTap;         // 发送键：不能两条路都走，否则会连按两次
 
         /// <summary>
         /// 找到目标窗口现在的句柄。
@@ -104,6 +125,26 @@ namespace PhoneMic
             _targetHwnd = WinTargetFinder.Find(TargetExe, TargetTitle);
             _targetAt = now;
             return _targetHwnd;
+        }
+
+        /// <summary>把目标窗口切到前台，并记住原来那个窗口</summary>
+        private static void BeginForeground(IntPtr target)
+        {
+            IntPtr cur = WinTargetFinder.Current();
+            if (cur == target) return;                    // 已经在前台，别动 _prevFg
+            // 只在第一次切的时候记下原窗口：按住期间每 400ms 会重发一次按下，
+            // 那时候窗口已经是目标了，再把 cur 记进去就会把「原来的窗口」覆盖掉
+            if (_prevFg == IntPtr.Zero) _prevFg = cur;
+            WinTargetFinder.Activate(target);
+        }
+
+        /// <summary>松手 / 发完：切回原来那个窗口</summary>
+        private static void EndForeground()
+        {
+            if (_prevFg == IntPtr.Zero) return;
+            IntPtr p = _prevFg;
+            _prevFg = IntPtr.Zero;
+            WinTargetFinder.Activate(p);
         }
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -148,7 +189,9 @@ namespace PhoneMic
             if (keys == null || keys.Length == 0) return true;
             if (_held && SameKeys(keys)) return true;     // 已经按着了，不重复
 
+            _inPress = true;
             ReleaseAll();                                 // 万一之前按的是别的组合，先松开
+            _inPress = false;
             bool ok = true;
             foreach (int vk in keys) ok &= Send(vk, true);
             _heldKeys = keys;
@@ -159,11 +202,14 @@ namespace PhoneMic
         /// <summary>松开整组键（逆序松开）</summary>
         public static bool ReleaseAll()
         {
-            if (!_held) return true;
             bool ok = true;
-            for (int i = _heldKeys.Length - 1; i >= 0; i--) ok &= Send(_heldKeys[i], false);
-            _heldKeys = new int[0];
-            _held = false;
+            if (_held)
+            {
+                for (int i = _heldKeys.Length - 1; i >= 0; i--) ok &= Send(_heldKeys[i], false);
+                _heldKeys = new int[0];
+                _held = false;
+            }
+            if (!_inPress) EndForeground();      // 切前台模式：松手后回到原来那个窗口
             return ok;
         }
 
@@ -190,11 +236,16 @@ namespace PhoneMic
         {
             if (keys == null || keys.Length == 0) return true;
 
+            _inPress = true;
             ReleaseAll();                                 // 先松开长按中的 Alt，别叠在一起
+            _inPress = false;
+
+            _inTap = true;                                // 发送键不能两条路都走
             bool ok = true;
             foreach (int vk in keys) ok &= Send(vk, true);
             System.Threading.Thread.Sleep(holdMs > 0 ? holdMs : 50);
             for (int i = keys.Length - 1; i >= 0; i--) ok &= Send(keys[i], false);
+            _inTap = false;
             return ok;
         }
 
@@ -248,13 +299,49 @@ namespace PhoneMic
             bool ext;
             ToBaseKey(vk, out baseVk, out ext);
 
-            // 选了「作用窗口」就走后台投递：消息直接塞进那个窗口的队列，不碰焦点
+            // 选了「作用窗口」就按选定的方式投递
             IntPtr target = ResolveTarget();
-            if (target != IntPtr.Zero) return PostTo(target, baseVk, ext, down);
+            if (target != IntPtr.Zero) return DeliverTo(target, baseVk, ext, down);
 
             if (Mode == InjectMode.Message)
                 return PostTo(GetForegroundWindow(), baseVk, ext, down);
 
+            return SendInputNormal(baseVk, ext, down);
+        }
+
+        /// <summary>按当前投递方式把一次按下 / 抬起送出去</summary>
+        private static bool DeliverTo(IntPtr target, int baseVk, bool ext, bool down)
+        {
+            bool wantPost = Delivery == Deliver.Background
+                         || Delivery == Deliver.BackgroundDeep
+                         || Delivery == Deliver.Both;
+            bool wantReal = Delivery == Deliver.Foreground || Delivery == Deliver.Both;
+
+            // 发送键（回车）不能两条路都走，否则会连发两条消息
+            bool ok = false;
+            if (wantPost)
+            {
+                ok = PostTo(target, baseVk, ext, down);
+                if (Delivery == Deliver.BackgroundDeep)
+                {
+                    foreach (IntPtr c in WinTargetFinder.Children(target))
+                        PostTo(c, baseVk, ext, down);
+                }
+                if (_inTap && Delivery == Deliver.Both) return ok;   // 发送键只走真实按键
+            }
+
+            if (wantReal)
+            {
+                if (down) BeginForeground(target);
+                ok = SendInputNormal(baseVk, ext, down) || ok;
+                if (!down) EndForeground();
+            }
+            return ok;
+        }
+
+        /// <summary>走系统输入流（真实按键），只到当前前台窗口 —— 所以前面要先切前台</summary>
+        private static bool SendInputNormal(int baseVk, bool ext, bool down)
+        {
             uint flags = 0;
             ushort wVk = (ushort)baseVk;
             ushort wScan = 0;
@@ -262,36 +349,25 @@ namespace PhoneMic
             if (Mode == InjectMode.ScanCode)
             {
                 uint sc = MapVirtualKey((uint)baseVk, 0);
-                if (sc != 0)
-                {
-                    wVk = 0;                  // 用扫描码时 wVk 必须为 0
-                    wScan = (ushort)sc;
-                    flags = KEYEVENTF_SCANCODE;
-                }
+                if (sc != 0) { wVk = 0; wScan = (ushort)sc; flags = KEYEVENTF_SCANCODE; }
             }
             if (ext) flags |= KEYEVENTF_EXTENDEDKEY;
             if (!down) flags |= KEYEVENTF_KEYUP;
 
-            var input = new INPUT
+            var arr = new INPUT[1];
+            arr[0] = new INPUT
             {
                 type = INPUT_KEYBOARD,
                 u = new INPUTUNION
                 {
                     ki = new KEYBDINPUT
                     {
-                        wVk = wVk,
-                        wScan = wScan,
-                        dwFlags = flags,
-                        time = 0,
-                        dwExtraInfo = IntPtr.Zero
+                        wVk = wVk, wScan = wScan, dwFlags = flags,
+                        time = 0, dwExtraInfo = IntPtr.Zero
                     }
                 }
             };
-            var arr = new INPUT[1];
-            arr[0] = input;
             bool ok = SendInput(1, arr, Marshal.SizeOf(typeof(INPUT))) == 1;
-
-            // 双路模式：再补一份窗口消息，防止目标程序只认消息不认注入
             if (Mode == InjectMode.Dual) PostTo(GetForegroundWindow(), baseVk, ext, down);
             return ok;
         }

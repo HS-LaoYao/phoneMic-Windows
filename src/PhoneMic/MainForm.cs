@@ -17,7 +17,7 @@ namespace PhoneMic
     {
         // 设计尺寸（96 DPI 下的逻辑单位）。实际像素由 UiTheme.S() 按 DPI 换算。
         private const int W = 660;
-        private const int H = 892;
+        private const int H = 930;
 
         private readonly Config _cfg;
 
@@ -53,7 +53,7 @@ namespace PhoneMic
         private Panel _dot, _bar;
         private Label _lblStatus, _lblDetail, _lblMeter, _lblKey, _lblFoot, _lblBar;
         private Waveform _wave;
-        private ComboBox _cboTarget;
+        private ComboBox _cboTarget, _cboDeliver;
         private List<WinTarget> _targets = new List<WinTarget>();
         private Button _btnRecord, _btnClear, _btnStart, _btnFixMic, _btnSettings;
 
@@ -206,7 +206,7 @@ namespace PhoneMic
             c2.Controls.Add(_btnClear);
 
             // ---------- 作用窗口 ----------
-            var c3 = UiTheme.MakeCard(this, 24, 542, w - 48, 104, "作用窗口（按键发给哪个程序）");
+            var c3 = UiTheme.MakeCard(this, 24, 542, w - 48, 142, "作用窗口（按键发给哪个程序）");
 
             _cboTarget = new ComboBox
             {
@@ -225,15 +225,38 @@ namespace PhoneMic
             btnRefreshTarget.Click += delegate { LoadTargets(); };
             c3.Controls.Add(btnRefreshTarget);
 
+            int halfW = (w - 48 - 40 - 10) / 2;
+
+            _cboDeliver = new ComboBox
+            {
+                Location = new Point(UiTheme.S(20), UiTheme.S(76)),
+                Size = new Size(UiTheme.S(halfW), UiTheme.S(30)),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = UiTheme.Field,
+                ForeColor = UiTheme.Text
+            };
+            _cboDeliver.Items.Add("后台投递（不抢焦点）");
+            _cboDeliver.Items.Add("后台投递 + 连子窗口");
+            _cboDeliver.Items.Add("切到前台再按（万能）");
+            _cboDeliver.Items.Add("两条路都试");
+            _cboDeliver.SelectedIndexChanged += OnDeliverChanged;
+            c3.Controls.Add(_cboDeliver);
+
+            var btnTestTarget = UiTheme.MakeButton("测 试", 20 + halfW + 10, 75, halfW, 32);
+            btnTestTarget.Font = UiTheme.Font(9.5f);
+            btnTestTarget.ForeColor = UiTheme.Blue;
+            btnTestTarget.Click += delegate { TestKey(); };
+            c3.Controls.Add(btnTestTarget);
+
             c3.Controls.Add(UiTheme.MakeLabel(
-                "默认＝发给当前前台窗口。选定程序后直接把按键消息投给它，不切前台（列表＝Alt+Tab 里那些）；"
-                + "少数程序不吃这一套，用「测试」试一下就知道",
-                20, 74, w - 48 - 40, 24, 9f, UiTheme.Sub));
+                "默认＝发给当前前台窗口。选定程序后按上面的方式投递；哪个管用只能实测，先点「测试」试试",
+                20, 112, w - 48 - 40, 22, 9f, UiTheme.Sub));
 
             // ---------- 麦克风提示条（始终占位，避免布局跳动）----------
             _bar = new Panel
             {
-                Location = new Point(UiTheme.S(24), UiTheme.S(662)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(700)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(92)),
                 BackColor = UiTheme.CardBg
             };
@@ -254,7 +277,7 @@ namespace PhoneMic
             _btnStart = new Button
             {
                 Text = "开 始",
-                Location = new Point(UiTheme.S(24), UiTheme.S(770)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(808)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(64)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Blue,
@@ -269,7 +292,7 @@ namespace PhoneMic
             Controls.Add(_btnStart);
 
             // ---------- 底部一行 ----------
-            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 846, w - 52, 22, 9f, UiTheme.Sub);
+            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 884, w - 52, 22, 9f, UiTheme.Sub);
             _lblFoot.Cursor = Cursors.Hand;
             _lblFoot.Click += delegate { OpenSettings(); };
             Controls.Add(_lblFoot);
@@ -375,6 +398,7 @@ namespace PhoneMic
         {
             KeyInjector.TargetExe = _cfg.TargetExe ?? "";
             KeyInjector.TargetTitle = _cfg.TargetTitle ?? "";
+            KeyInjector.Delivery = (KeyInjector.Deliver)_cfg.DeliveryMode;
         }
 
         /// <summary>重新枚举任务栏上的窗口填进下拉框</summary>
@@ -397,6 +421,13 @@ namespace PhoneMic
                 {
                     if (sel == 0) sel = i + 1;
                 }
+            }
+
+            if (_cboDeliver != null)
+            {
+                _cboDeliver.SelectedIndexChanged -= OnDeliverChanged;
+                _cboDeliver.SelectedIndex = (_cfg.DeliveryMode >= 0 && _cfg.DeliveryMode <= 3) ? _cfg.DeliveryMode : 0;
+                _cboDeliver.SelectedIndexChanged += OnDeliverChanged;
             }
 
             _cboTarget.SelectedIndexChanged -= OnTargetChanged;   // 填充期间别触发
@@ -423,6 +454,16 @@ namespace PhoneMic
             }
             ApplyTarget();
             _cfg.Save();
+        }
+
+        private void OnDeliverChanged(object sender, EventArgs e)
+        {
+            _cfg.DeliveryMode = _cboDeliver.SelectedIndex;
+            ApplyTarget();
+            _cfg.Save();
+            string[] names = { "后台投递（不抢焦点）", "后台投递 + 连子窗口", "切到前台再按（说完切回）", "两条路都试" };
+            Log("投递方式：" + (_cfg.DeliveryMode >= 0 && _cfg.DeliveryMode < names.Length
+                ? names[_cfg.DeliveryMode] : "?"));
         }
 
         private void UpdateModeButtons()
