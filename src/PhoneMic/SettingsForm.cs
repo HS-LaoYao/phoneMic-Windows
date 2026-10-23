@@ -16,7 +16,7 @@ namespace PhoneMic
     internal sealed class SettingsForm : Form
     {
         private const int W = 660;
-        private const int H = 880;
+        private const int H = 900;
 
         private readonly MainForm _owner;
         private readonly Config _cfg;
@@ -141,7 +141,7 @@ namespace PhoneMic
             c3.Controls.Add(_lblTest);
 
             // ---------- 选项 ----------
-            var c4 = UiTheme.MakeCard(this, 24, 538, w, 100, "选项");
+            var c4 = UiTheme.MakeCard(this, 24, 538, w, 128, "选项");
             _chkMin = new CheckBox
             {
                 Text = "关闭窗口时最小化到托盘（不退出）",
@@ -166,8 +166,27 @@ namespace PhoneMic
             _chkAuto.CheckedChanged += delegate { _cfg.AutoStartOnLaunch = _chkAuto.Checked; _cfg.Save(); };
             c4.Controls.Add(_chkAuto);
 
+            // 注入方式：默认虚拟键码（聊天/语音软件吃这套）；个别程序只认扫描码时才勾这个
+            var chkScan = new CheckBox
+            {
+                Text = "按键用扫描码方式注入（默认不用勾，只有个别程序不认模拟按键时才勾）",
+                Location = new Point(UiTheme.S(20), UiTheme.S(94)),
+                AutoSize = true,
+                ForeColor = UiTheme.Sub,
+                Font = UiTheme.Font(10f),
+                Checked = _cfg.UseScanCode
+            };
+            chkScan.CheckedChanged += delegate
+            {
+                _cfg.UseScanCode = chkScan.Checked;
+                _cfg.Save();
+                KeyInjector.UseScanCode = chkScan.Checked;
+                _owner.Log("按键注入方式改为：" + (chkScan.Checked ? "扫描码" : "虚拟键码"));
+            };
+            c4.Controls.Add(chkScan);
+
             // ---------- 日志 ----------
-            var c5 = UiTheme.MakeCard(this, 24, 654, w, 200, "日志（出问题时把这里的内容发我）");
+            var c5 = UiTheme.MakeCard(this, 24, 682, w, 200, "日志（出问题时把这里的内容发我）");
             _txtLog = new TextBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(46)),

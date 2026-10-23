@@ -55,6 +55,42 @@ namespace PhoneMic
         private const uint KEYEVENTF_KEYUP = 0x0002;
         private const uint KEYEVENTF_SCANCODE = 0x0008;
 
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        /// <summary>
+        /// 注入方式。默认 false = 用虚拟键码（聊天软件、语音输入都吃这一套）；
+        /// true = 用扫描码（部分游戏只认扫描码）。
+        /// </summary>
+        public static bool UseScanCode = false;
+
+        /// <summary>读某个键现在是不是按下的（用来验证注入有没有生效）</summary>
+        public static bool IsKeyDown(int vk)
+        {
+            return (GetAsyncKeyState(vk) & 0x8000) != 0;
+        }
+
+        /// <summary>当前前台窗口属于哪个进程（判断焦点是不是在目标软件上）</summary>
+        public static string ForegroundProcessName()
+        {
+            try
+            {
+                IntPtr h = GetForegroundWindow();
+                if (h == IntPtr.Zero) return "";
+                uint pid;
+                GetWindowThreadProcessId(h, out pid);
+                if (pid == 0) return "";
+                return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName;
+            }
+            catch { return ""; }
+        }
+
         /// <summary>当前是否处于「按住」状态，用于保证幂等（不会重复按下）</summary>
         private static bool _held;
         private static int[] _heldKeys = new int[0];
@@ -88,6 +124,16 @@ namespace PhoneMic
         }
 
         public static bool IsHeld { get { return _held; } }
+
+        /// <summary>测试注入：按下 → 等一会 → 松开，返回是否每次都成功</summary>
+        public static bool TestPress(int vk, int holdMs)
+        {
+            bool ok = Send(vk, true);
+            System.Threading.Thread.Sleep(holdMs);
+            ok &= IsKeyDown(vk);          // 读回来确认系统认了这个按下
+            ok &= Send(vk, false);
+            return ok;
+        }
 
         private static bool SameKeys(int[] a)
         {
@@ -126,24 +172,21 @@ namespace PhoneMic
             bool ext;
             ToBaseKey(vk, out baseVk, out ext);
 
-            uint sc = MapVirtualKey((uint)baseVk, 0);
-            uint flags;
-            ushort wVk, wScan;
+            uint flags = 0;
+            ushort wVk = (ushort)baseVk;
+            ushort wScan = 0;
 
-            if (sc != 0)
+            if (UseScanCode)
             {
-                wVk = 0;                      // 用扫描码时 wVk 必须为 0
-                wScan = (ushort)sc;
-                flags = KEYEVENTF_SCANCODE;
-                if (ext) flags |= KEYEVENTF_EXTENDEDKEY;
+                uint sc = MapVirtualKey((uint)baseVk, 0);
+                if (sc != 0)
+                {
+                    wVk = 0;                  // 用扫描码时 wVk 必须为 0
+                    wScan = (ushort)sc;
+                    flags = KEYEVENTF_SCANCODE;
+                }
             }
-            else
-            {
-                // 取不到扫描码就退回用虚拟键码，总比发一串无效事件强
-                wVk = (ushort)baseVk;
-                wScan = 0;
-                flags = 0;
-            }
+            if (ext) flags |= KEYEVENTF_EXTENDEDKEY;
             if (!down) flags |= KEYEVENTF_KEYUP;
 
             var input = new INPUT

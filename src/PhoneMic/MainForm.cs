@@ -49,6 +49,7 @@ namespace PhoneMic
         public MainForm()
         {
             _cfg = Config.Load();
+            KeyInjector.UseScanCode = _cfg.UseScanCode;
 
             Text = "phoneMic";
             BackColor = UiTheme.Bg;
@@ -154,6 +155,11 @@ namespace PhoneMic
             _lblKey = UiTheme.MakeLabel("（不映射）", 22, 50, w - 48 - 22 - 240, 38, 15f, UiTheme.Sub);
             _lblKey.Font = UiTheme.Font(15f, FontStyle.Bold);
             c2.Controls.Add(_lblKey);
+
+            var btnTest = UiTheme.MakeButton("测 试", w - 48 - 20 - 216 - 8 - 92, 52, 92, 36);
+            btnTest.ForeColor = UiTheme.Blue;
+            btnTest.Click += delegate { TestKey(); };
+            c2.Controls.Add(btnTest);
 
             _btnRecord = UiTheme.MakeButton("重新录制", w - 48 - 20 - 216, 52, 104, 36);
             _btnRecord.Click += delegate { RecordKey(); };
@@ -439,6 +445,12 @@ namespace PhoneMic
             var a = _audio;
             if (a != null) a.Clear();
 
+            // 按键只会送到「当前前台窗口」。如果焦点还在 phoneMic 自己身上，
+            // 那 Alt 就打到我们窗口里了，目标软件当然没反应 —— 先把这件事记进日志。
+            string fg = KeyInjector.ForegroundProcessName();
+            if (string.Equals(fg, "PhoneMic", StringComparison.OrdinalIgnoreCase))
+                Ui(() => Log("注意：当前焦点在 phoneMic 窗口上，按键打不到目标软件。请先点一下要说话的那个软件。"));
+
             bool ok = true;
             lock (_keyLock) ok = KeyInjector.Press(_cfg.Keys);
 
@@ -603,6 +615,72 @@ namespace PhoneMic
                 });
             };
             _cap.Start();
+        }
+
+        /// <summary>
+        /// 模拟按住配置的键 1.5 秒，并回报结果。
+        /// 用来分辨到底是「注入失败」还是「目标软件不认 / 焦点不对」。
+        /// </summary>
+        private void TestKey()
+        {
+            int[] keys = _cfg.Keys;
+            if (keys == null || keys.Length == 0)
+            {
+                MessageBox.Show(this, "还没有设置要按住的键。\n\n先点「重新录制」，然后按一下键盘上的键。",
+                    "按键测试", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string desc = KeyInjector.Describe(keys);
+            string fg = KeyInjector.ForegroundProcessName();
+            Log("按键测试：" + desc + "，当前前台进程 = " + (string.IsNullOrEmpty(fg) ? "未知" : fg) +
+                "，注入方式 = " + (KeyInjector.UseScanCode ? "扫描码" : "虚拟键码"));
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                bool okPress = false, downAfter = false, okRelease = false;
+                try
+                {
+                    lock (_keyLock)
+                    {
+                        okPress = KeyInjector.Press(keys);
+                        System.Threading.Thread.Sleep(1500);
+                        downAfter = KeyInjector.IsKeyDown(keys[keys.Length - 1]);
+                        okRelease = KeyInjector.ReleaseAll();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Ui(() => Log("按键测试异常：" + ex.Message));
+                }
+
+                Ui(() =>
+                {
+                    Log("按键测试结果：按下=" + okPress + " 读回=" + downAfter + " 松开=" + okRelease);
+
+                    if (okPress && downAfter)
+                    {
+                        MessageBox.Show(this,
+                            "已模拟按住「" + desc + "」1.5 秒，系统也确认这个键处于按下状态。\n\n" +
+                            "说明注入是成功的。如果目标软件仍然没反应，那就是：\n" +
+                            "1. 当时焦点不在那个软件上（说话前先点一下它）；\n" +
+                            "2. 或者那个软件屏蔽了模拟按键。\n\n" +
+                            (string.Equals(fg, "PhoneMic", StringComparison.OrdinalIgnoreCase)
+                                ? "注意：刚才前台是 phoneMic 自己，请再切到目标软件后试一次。"
+                                : "刚才前台进程是：" + fg),
+                            "按键测试", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show(this,
+                            "注入没成功（按下=" + okPress + "，读回=" + downAfter + "）。\n\n" +
+                            "常见原因：目标软件是以管理员身份运行的，而本程序不是。\n" +
+                            "解决办法：右键 phoneMic →「以管理员身份运行」，再试。\n\n" +
+                            "也可以到设置里把「按键注入方式」换成扫描码再试一次。",
+                            "按键测试", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                });
+            });
         }
 
         private void UpdateKeyLabel()
