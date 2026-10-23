@@ -409,6 +409,9 @@ namespace PhoneMic
                     "设为默认麦克风", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
                 return;
 
+            // 改麦克风前，先把「默认播放设备」拍个快照；改完如果被动了就还原
+            string[] renderSnap = _owner.SnapshotRenderIds();
+
             _cfg.PrevConsoleId = AudioDefault.GetDefaultCaptureId(Role.Console);
             _cfg.PrevCommId = AudioOutput.GetDefaultCaptureName(Role.Communications) == null
                 ? "" : AudioDefault.GetDefaultCaptureId(Role.Communications);
@@ -417,6 +420,7 @@ namespace PhoneMic
             try
             {
                 AudioDefault.SetDefaultAll(cableId);
+                _owner.RestoreRenderIdsIfChanged(renderSnap);   // 兜底：保证扬声器不受影响
                 RefreshMicInfo();
                 _owner.Log("已把 CABLE Output 设为系统默认麦克风（含默认通信设备）");
                 MessageBox.Show(this,

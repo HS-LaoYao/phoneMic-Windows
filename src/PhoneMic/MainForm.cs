@@ -81,6 +81,7 @@ namespace PhoneMic
             UpdateKeyLabel();
             SetStatus("未开始", UiTheme.Sub, "点下面的「开始」按钮");
             CheckMicState();
+            FixRenderDefault();
 
             Log("phoneMic 已启动。手机和电脑连同一个 WiFi 即可。");
         }
@@ -301,6 +302,37 @@ namespace PhoneMic
             return name != null && name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        /// <summary>
+        /// 兜底修复：安装虚拟声卡驱动后，Windows 有可能把「默认播放设备」也切到 CABLE Input。
+        /// 那样别的软件（网易云、QQ音乐…）能播但没声音。这里检测到就自动改回真实扬声器 ——
+        /// 只有游戏/直播软件会故意把默认输出设成虚拟线，普通用户不会是故意的。
+        /// </summary>
+        private void FixRenderDefault()
+        {
+            try
+            {
+                string cur = AudioOutput.GetDefaultRenderName(NAudio.CoreAudioApi.Role.Multimedia);
+                if (!IsCable(cur)) return;
+
+                AudioOutput.DevInfo target = null;
+                foreach (var d in AudioOutput.ListDevices())
+                {
+                    if (!IsCable(d.Name)) { target = d; break; }
+                }
+                if (target == null) return;
+
+                AudioDefault.SetDefault(target.Id, NAudio.CoreAudioApi.Role.Console);
+                AudioDefault.SetDefault(target.Id, NAudio.CoreAudioApi.Role.Multimedia);
+                AudioDefault.SetDefault(target.Id, NAudio.CoreAudioApi.Role.Communications);
+
+                Log("检测到默认播放设备是「" + cur + "」，已自动改回：" + target.Name);
+            }
+            catch (Exception ex)
+            {
+                Log("修复默认播放设备失败：" + ex.Message);
+            }
+        }
+
         /// <summary>由设置窗口回调：把麦克风状态显示成一条提示</summary>
         internal void NotifyMicState(bool isCable, string currentName)
         {
@@ -326,6 +358,46 @@ namespace PhoneMic
                 _btnFixMic.Visible = true;
             }
             UiTheme.ApplyRound(_bar, UiTheme.S(16));
+        }
+
+        /// <summary>供设置窗口调用：返回当前默认播放设备 ID（改麦克风前先存一份）</summary>
+        internal string[] SnapshotRenderIds()
+        {
+            return new string[]
+            {
+                AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Console),
+                AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Multimedia),
+                AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Communications)
+            };
+        }
+
+        /// <summary>供设置窗口调用：如果播放设备被动过，就按快照还原</summary>
+        internal bool RestoreRenderIdsIfChanged(string[] snap)
+        {
+            if (snap == null || snap.Length < 3) return false;
+            try
+            {
+                var roles = new[]
+                {
+                    NAudio.CoreAudioApi.Role.Console,
+                    NAudio.CoreAudioApi.Role.Multimedia,
+                    NAudio.CoreAudioApi.Role.Communications
+                };
+                bool changed = false;
+                for (int i = 0; i < 3; i++)
+                {
+                    if (string.IsNullOrEmpty(snap[i])) continue;
+                    string now = AudioDefault.GetDefaultRenderId(roles[i]);
+                    if (!string.Equals(now, snap[i], StringComparison.OrdinalIgnoreCase))
+                    {
+                        AudioDefault.SetDefault(snap[i], roles[i]);
+                        changed = true;
+                    }
+                }
+                if (changed) Log("设置过程中默认播放设备被动过，已自动还原");
+                return changed;
+            }
+            catch { return false; }
         }
 
         internal void ReloadAfterSettings()
