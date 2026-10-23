@@ -24,6 +24,8 @@ namespace PhoneMic
         public event Action PttUp;
         /// <summary>心跳，参数为手机当前模式：0=长按 1=常开</summary>
         public event Action<int> Heartbeat;
+        /// <summary>手机上点了「发送」—— 参数为发送键编号（见 Proto.SendEnter / SendShiftEnter）</summary>
+        public event Action<int> SendKey;
         /// <summary>有设备来发现本机</summary>
         public event Action<string> Discovered;           // 参数为对方 IP
 
@@ -36,6 +38,7 @@ namespace PhoneMic
         private IPEndPoint _peerEp;
 
         private int _downSeq;
+        private int _lastSendSeq = -1;
 
         /// <summary>把一帧音频发给手机（模式③：手机当耳机）</summary>
         public void SendAudioToPeer(byte[] pcm, int len)
@@ -129,6 +132,23 @@ namespace PhoneMic
                             // 不回的话电脑关了，手机上仍显示「已连接」，容易误判。
                             try { _udp.Send(new byte[] { Proto.TAck }, 1, ep); } catch { }
                             var h = Heartbeat; if (h != null) h(data.Length > 1 ? data[1] : 0);
+                        }
+                        break;
+
+                    case Proto.TSendKey:
+                        {
+                            // 手机为了防丢包会连发 3 个同 seq 的包，这里按 seq 去重 ——
+                            // 否则点一下「发送」会连按三次回车，发出去三条消息。
+                            if (data.Length >= 4)
+                            {
+                                int s = ((data[1] & 0xFF) << 8) | (data[2] & 0xFF);
+                                if (s != _lastSendSeq)
+                                {
+                                    _lastSendSeq = s;
+                                    var h = SendKey;
+                                    if (h != null) h(data[3]);
+                                }
+                            }
                         }
                         break;
 

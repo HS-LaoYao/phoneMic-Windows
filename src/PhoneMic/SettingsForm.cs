@@ -16,7 +16,7 @@ namespace PhoneMic
     internal sealed class SettingsForm : Form
     {
         private const int W = 660;
-        private const int H = 994;
+        private const int H = 1098;
 
         private readonly MainForm _owner;
         private readonly Config _cfg;
@@ -282,6 +282,103 @@ namespace PhoneMic
             btnRefreshLog.Font = UiTheme.Font(9.5f);
             btnRefreshLog.Click += delegate { RefreshLog(); };
             c5.Controls.Add(btnRefreshLog);
+
+            // ---------- 关于 / 更新 ----------
+            var c6 = UiTheme.MakeCard(this, 24, 990, w, 92, "关于 / 更新");
+
+            var btnUpdate = UiTheme.MakeButton("检查更新", 20, 46, 130, 34);
+            btnUpdate.Font = UiTheme.Font(9.5f);
+            btnUpdate.Click += OnCheckUpdate;
+            c6.Controls.Add(btnUpdate);
+
+            var btnAbout = UiTheme.MakeButton("关于", 158, 46, 96, 34);
+            btnAbout.Font = UiTheme.Font(9.5f);
+            btnAbout.Click += delegate
+            {
+                MessageBox.Show(this,
+                    "phoneMic v" + Proto.Version + "\n\n" +
+                    "把手机变成电脑的麦克风（和耳机）。\n\n" +
+                    "源码（两边同步）：\n" +
+                    "码云　https://gitee.com/heishanyao_admin/phoneMic-Windows\n" +
+                    "GitHub　https://github.com/HS-LaoYao/phoneMic-Windows\n\n" +
+                    "安装包放在码云的「发行版」里，检查更新也是从那里拉。",
+                    "关于 phoneMic", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+            c6.Controls.Add(btnAbout);
+
+            var btnReleases = UiTheme.MakeButton("发行版页面", 262, 46, 120, 34);
+            btnReleases.Font = UiTheme.Font(9.5f);
+            btnReleases.Click += delegate
+            {
+                try { System.Diagnostics.Process.Start(Updater.ReleasesPage); } catch { }
+            };
+            c6.Controls.Add(btnReleases);
+
+            c6.Controls.Add(UiTheme.MakeLabel(
+                "当前 v" + Proto.Version + " · 新版会从码云发行版下载安装包",
+                392, 52, w - 412, 26, 9.5f, UiTheme.Sub));
+        }
+
+        // ==================== 检查更新 ====================
+
+        private void OnCheckUpdate(object sender, EventArgs e)
+        {
+            var btn = sender as Button;
+
+            var th = new System.Threading.Thread(delegate()
+            {
+                var info = Updater.Check();
+
+                BeginInvoke((Action)delegate
+                {
+                    if (info.Error != null)
+                    {
+                        MessageBox.Show(this, "检查更新失败：\n" + info.Error, "phoneMic",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    if (!Updater.IsNewer(info.Version, Proto.Version))
+                    {
+                        MessageBox.Show(this, "已经是最新版（v" + Proto.Version + "）", "phoneMic",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    if (string.IsNullOrEmpty(info.Url))
+                    {
+                        MessageBox.Show(this,
+                            "码云上有新版本 v" + info.Version + "，但没找到安装包。\n" +
+                            "点「发行版页面」手动下载吧。", "phoneMic",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    var r = MessageBox.Show(this,
+                        "发现新版本 v" + info.Version + "（当前 v" + Proto.Version + "）。\n\n" +
+                        "下载并运行安装包吗？", "phoneMic · 检查更新",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (r != DialogResult.Yes) return;
+
+                    if (btn != null) { btn.Enabled = false; btn.Text = "下载中…"; }
+                    var th2 = new System.Threading.Thread(delegate()
+                    {
+                        string err = null;
+                        try { Updater.DownloadAndRun(info.Url, info.Version); }
+                        catch (Exception ex) { err = ex.Message; }
+
+                        BeginInvoke((Action)delegate
+                        {
+                            if (btn != null) { btn.Enabled = true; btn.Text = "检查更新"; }
+                            if (err != null)
+                                MessageBox.Show(this, "下载失败：\n" + err, "phoneMic",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        });
+                    });
+                    th2.IsBackground = true;
+                    th2.Start();
+                });
+            });
+            th.IsBackground = true;
+            th.Start();
         }
 
         // ==================== 设备 ====================

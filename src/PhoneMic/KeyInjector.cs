@@ -155,6 +155,20 @@ namespace PhoneMic
             return ok;
         }
 
+        /// <summary>
+        /// 敲一下就松开（给「发送」这种一次性动作用）。
+        /// 按住 60ms 是有意留的：有些程序对「按下和抬起在同一个消息批次里」无反应。
+        /// </summary>
+        public static bool Tap(int[] keys, int holdMs)
+        {
+            if (keys == null || keys.Length == 0) return true;
+            bool ok = true;
+            foreach (int vk in keys) ok &= Send(vk, true);
+            System.Threading.Thread.Sleep(holdMs > 0 ? holdMs : 50);
+            for (int i = keys.Length - 1; i >= 0; i--) ok &= Send(keys[i], false);
+            return ok;
+        }
+
         /// <summary>测试注入：按下 → 等一会 → 松开，返回是否每次都成功</summary>
         public static bool TestPress(int vk, int holdMs)
         {

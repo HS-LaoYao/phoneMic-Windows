@@ -23,6 +23,9 @@ namespace PhoneMic
         /// <summary>电脑监听的 UDP 端口，手机主动发过来</summary>
         public const int Port = 47810;
 
+        /// <summary>程序版本。检查更新时和码云发行版上的 tag 比（改版本记得同步改 installer/phoneMic.iss）</summary>
+        public const string Version = "1.0.2";
+
         public const byte TAudio = 0x01;
         public const byte TPttDown = 0x10;
         public const byte TPttUp = 0x11;
@@ -31,6 +34,14 @@ namespace PhoneMic
         public const byte TAudioDown = 0x02;   // 电脑→手机 的音频（手机当耳机时用）
         public const byte TDiscover = 0x20;
         public const byte TDiscoverAck = 0x21;
+
+        /// <summary>
+        /// 「发送键」[13][seq:u16][key:u8] —— 手机上点「发送」，电脑按一次指定键。
+        /// 手机会连发 3 个同样 seq 的包防丢；这里按 seq 去重，保证只按一次。
+        /// </summary>
+        public const byte TSendKey = 0x13;
+        public const int SendEnter = 0;         // 回车
+        public const int SendShiftEnter = 1;    // Shift + 回车
 
         public const int SampleRate = 48000;
         public const int FrameSamples = 480;       // 10ms

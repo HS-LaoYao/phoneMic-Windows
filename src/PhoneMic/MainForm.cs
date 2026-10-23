@@ -120,7 +120,7 @@ namespace PhoneMic
             int w = W;                       // 设计宽度，卡片/按钮内部会按 DPI 换算
 
             Controls.Add(UiTheme.MakeLabel("phoneMic", 24, 16, 300, 40, 18f, UiTheme.Text));
-            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v1.0.2", 26, 58, 340, 24, 10f, UiTheme.Sub));
+            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v" + Proto.Version + "", 26, 58, 340, 24, 10f, UiTheme.Sub));
 
             _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 108, 24, 108, 38);
             _btnSettings.Click += delegate
@@ -611,6 +611,7 @@ namespace PhoneMic
             _rx.PttDown += OnPttDown;
             _rx.PttUp += OnPttUp;
             _rx.Heartbeat += OnHeartbeat;
+            _rx.SendKey += OnSendKey;
             _rx.Discovered += delegate(string ip)
             {
                 long now = Stopwatch.GetTimestamp();
@@ -769,6 +770,28 @@ namespace PhoneMic
         private void OnHeartbeat(int mode)
         {
             MarkConnected();
+        }
+
+        /// <summary>
+        /// 手机上点了「发送」：在电脑当前焦点窗口里敲一次回车（或 Shift+回车）。
+        /// 先松开长按中的 Alt —— 不然敲出来的会是 Alt+回车。
+        /// </summary>
+        private void OnSendKey(int keyId)
+        {
+            bool shift = keyId == Proto.SendShiftEnter;
+            int[] keys = shift
+                ? new int[] { 0xA0, 0x0D }     // 左 Shift + 回车
+                : new int[] { 0x0D };          // 回车
+
+            bool ok;
+            lock (_keyLock)
+            {
+                KeyInjector.ReleaseAll();      // 把长按的 Alt 松掉
+                ok = KeyInjector.Tap(keys, 60);
+            }
+
+            string name = shift ? "Shift+回车" : "回车";
+            Ui(() => Log(ok ? "已发送：" + name : "发送失败（系统拒绝了注入）：" + name));
         }
 
         private void MarkConnected()
