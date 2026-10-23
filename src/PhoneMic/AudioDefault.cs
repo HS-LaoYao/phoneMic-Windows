@@ -54,6 +54,20 @@ namespace PhoneMic
             catch { return ""; }
         }
 
+        /// <summary>取某个角色的默认播放（扬声器）设备 ID</summary>
+        public static string GetDefaultRenderId(Role role)
+        {
+            try
+            {
+                using (var en = new MMDeviceEnumerator())
+                {
+                    var d = en.GetDefaultAudioEndpoint(DataFlow.Render, role);
+                    return d != null ? d.ID : "";
+                }
+            }
+            catch { return ""; }
+        }
+
         /// <summary>
         /// 把指定录音设备设成默认。role 传 Console 只影响普通程序，
         /// 传 Communications 才影响 QQ / 微信语音 / 会议 / 语音输入这类程序。

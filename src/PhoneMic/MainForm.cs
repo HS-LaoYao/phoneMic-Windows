@@ -49,7 +49,7 @@ namespace PhoneMic
         public MainForm()
         {
             _cfg = Config.Load();
-            KeyInjector.UseScanCode = _cfg.UseScanCode;
+            KeyInjector.Mode = (KeyInjector.InjectMode)_cfg.KeyMode;
 
             Text = "phoneMic";
             BackColor = UiTheme.Bg;
@@ -634,7 +634,7 @@ namespace PhoneMic
             string desc = KeyInjector.Describe(keys);
             string fg = KeyInjector.ForegroundProcessName();
             Log("按键测试：" + desc + "，当前前台进程 = " + (string.IsNullOrEmpty(fg) ? "未知" : fg) +
-                "，注入方式 = " + (KeyInjector.UseScanCode ? "扫描码" : "虚拟键码"));
+                "，注入方式 = " + ModeName());
 
             System.Threading.Tasks.Task.Run(() =>
             {
@@ -644,7 +644,7 @@ namespace PhoneMic
                     lock (_keyLock)
                     {
                         okPress = KeyInjector.Press(keys);
-                        System.Threading.Thread.Sleep(1500);
+                        System.Threading.Thread.Sleep(3000);
                         downAfter = KeyInjector.IsKeyDown(keys[keys.Length - 1]);
                         okRelease = KeyInjector.ReleaseAll();
                     }
@@ -661,7 +661,7 @@ namespace PhoneMic
                     if (okPress && downAfter)
                     {
                         MessageBox.Show(this,
-                            "已模拟按住「" + desc + "」1.5 秒，系统也确认这个键处于按下状态。\n\n" +
+                            "已模拟按住「" + desc + "」3 秒，系统也确认这个键处于按下状态。\n\n" +
                             "说明注入是成功的。如果目标软件仍然没反应，那就是：\n" +
                             "1. 当时焦点不在那个软件上（说话前先点一下它）；\n" +
                             "2. 或者那个软件屏蔽了模拟按键。\n\n" +
@@ -681,6 +681,16 @@ namespace PhoneMic
                     }
                 });
             });
+        }
+
+        private static string ModeName()
+        {
+            switch (KeyInjector.Mode)
+            {
+                case KeyInjector.InjectMode.ScanCode: return "扫描码";
+                case KeyInjector.InjectMode.Message: return "消息投递";
+                default: return "虚拟键码";
+            }
         }
 
         private void UpdateKeyLabel()

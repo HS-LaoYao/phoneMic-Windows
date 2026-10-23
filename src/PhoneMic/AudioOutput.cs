@@ -173,6 +173,20 @@ namespace PhoneMic
             catch { return null; }
         }
 
+        /// <summary>系统默认播放（扬声器）设备的名字 —— 用来检查是不是被改成了虚拟声卡</summary>
+        public static string GetDefaultRenderName(Role role)
+        {
+            try
+            {
+                using (var en = new MMDeviceEnumerator())
+                {
+                    var d = en.GetDefaultAudioEndpoint(DataFlow.Render, role);
+                    return d != null ? d.FriendlyName : null;
+                }
+            }
+            catch { return null; }
+        }
+
         /// <summary>在指定录音设备上录一小段，返回 0~1 的峰值</summary>
         public static float CapturePeak(string deviceId, int milliseconds)
         {

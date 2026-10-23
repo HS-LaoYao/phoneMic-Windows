@@ -64,11 +64,26 @@ namespace PhoneMic
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-        /// <summary>
-        /// 注入方式。默认 false = 用虚拟键码（聊天软件、语音输入都吃这一套）；
-        /// true = 用扫描码（部分游戏只认扫描码）。
-        /// </summary>
-        public static bool UseScanCode = false;
+        /// <summary>按键注入方式</summary>
+        public enum InjectMode
+        {
+            /// <summary>虚拟键码（默认，绝大多数聊天/语音软件认这个）</summary>
+            VirtualKey = 0,
+            /// <summary>扫描码（部分游戏只认扫描码）</summary>
+            ScanCode = 1,
+            /// <summary>直接把按键消息投递到前台窗口（给屏蔽了模拟按键的程序用）</summary>
+            Message = 2
+        }
+
+        public static InjectMode Mode = InjectMode.VirtualKey;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint WM_KEYDOWN = 0x0100;
+        private const uint WM_KEYUP = 0x0101;
+        private const uint WM_SYSKEYDOWN = 0x0104;
+        private const uint WM_SYSKEYUP = 0x0105;
 
         /// <summary>读某个键现在是不是按下的（用来验证注入有没有生效）</summary>
         public static bool IsKeyDown(int vk)
@@ -172,11 +187,14 @@ namespace PhoneMic
             bool ext;
             ToBaseKey(vk, out baseVk, out ext);
 
+            if (Mode == InjectMode.Message)
+                return SendByMessage(baseVk, ext, down);
+
             uint flags = 0;
             ushort wVk = (ushort)baseVk;
             ushort wScan = 0;
 
-            if (UseScanCode)
+            if (Mode == InjectMode.ScanCode)
             {
                 uint sc = MapVirtualKey((uint)baseVk, 0);
                 if (sc != 0)
@@ -207,6 +225,30 @@ namespace PhoneMic
             var arr = new INPUT[1];
             arr[0] = input;
             return SendInput(1, arr, Marshal.SizeOf(typeof(INPUT))) == 1;
+        }
+
+        /// <summary>
+        /// 把按键直接投递到当前前台窗口。
+        /// 有些程序会过滤掉 SendInput 产生的「注入」事件，但对正常的窗口消息照收不误，
+        /// 这条路就是给它们准备的。缺点是只影响那一个窗口，而且不改变全局键状态。
+        /// </summary>
+        private static bool SendByMessage(int baseVk, bool ext, bool down)
+        {
+            IntPtr h = GetForegroundWindow();
+            if (h == IntPtr.Zero) return false;
+
+            bool isAlt = baseVk == 0x12;
+            uint msg = down
+                ? (isAlt ? WM_SYSKEYDOWN : WM_KEYDOWN)
+                : (isAlt ? WM_SYSKEYUP : WM_KEYUP);
+
+            uint sc = MapVirtualKey((uint)baseVk, 0);
+            int lp = 1 | ((int)sc << 16);
+            if (ext) lp |= 1 << 24;
+            if (isAlt) lp |= 1 << 29;                 // context code
+            if (!down) lp |= unchecked((1 << 30) | (int)0x80000000);   // 上一状态 / 抬起
+
+            return PostMessage(h, msg, (IntPtr)baseVk, (IntPtr)lp);
         }
 
         /// <summary>这些键要用「扩展键」标志，否则会被当成小键盘上对应的键</summary>

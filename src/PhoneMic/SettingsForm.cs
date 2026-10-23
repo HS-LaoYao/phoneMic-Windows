@@ -16,13 +16,14 @@ namespace PhoneMic
     internal sealed class SettingsForm : Form
     {
         private const int W = 660;
-        private const int H = 900;
+        private const int H = 940;
 
         private readonly MainForm _owner;
         private readonly Config _cfg;
 
+        private Label _lblRender;
         private TextBox _txtAddr;
-        private ComboBox _cboDevice;
+        private ComboBox _cboDevice, _cboKeyMode;
         private Label _lblVb, _lblMicConsole, _lblMicComm, _lblTest;
         private Button _btnInstall, _btnSetMic, _btnRestoreMic, _btnSelfTest;
         private CheckBox _chkMin, _chkAuto;
@@ -83,7 +84,7 @@ namespace PhoneMic
             c1.Controls.Add(btnCopy);
 
             // ---------- 输出设备 ----------
-            var c2 = UiTheme.MakeCard(this, 24, 136, w, 160, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
+            var c2 = UiTheme.MakeCard(this, 24, 136, w, 200, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
             _cboDevice = new ComboBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(48)),
@@ -112,8 +113,21 @@ namespace PhoneMic
             c2.Controls.Add(UiTheme.MakeLabel("位置：控制面板 → 声音 → 录制，能看到 CABLE Output 就说明装好了",
                 20, 122, w - 40, 24, 9f, UiTheme.Sub));
 
+            // 这一行是给「装了之后别的软件没声音」准备的：
+            // 如果默认播放变成了 CABLE Input，网易云这类软件就"放歌没声"。
+            _lblRender = UiTheme.MakeLabel("", 20, 152, w - 20 - 160, 26, 9.5f, UiTheme.Sub);
+            c2.Controls.Add(_lblRender);
+
+            var btnSound = UiTheme.MakeButton("打开声音设置", w - 20 - 150, 150, 150, 32);
+            btnSound.Font = UiTheme.Font(9.5f);
+            btnSound.Click += delegate
+            {
+                try { System.Diagnostics.Process.Start("ms-settings:sound"); } catch { }
+            };
+            c2.Controls.Add(btnSound);
+
             // ---------- 系统麦克风 ----------
-            var c3 = UiTheme.MakeCard(this, 24, 312, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
+            var c3 = UiTheme.MakeCard(this, 24, 352, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
 
             _lblMicConsole = UiTheme.MakeLabel("默认设备：读取中…", 20, 48, w - 20 - 190, 26, 10f, UiTheme.Sub);
             c3.Controls.Add(_lblMicConsole);
@@ -141,7 +155,7 @@ namespace PhoneMic
             c3.Controls.Add(_lblTest);
 
             // ---------- 选项 ----------
-            var c4 = UiTheme.MakeCard(this, 24, 538, w, 128, "选项");
+            var c4 = UiTheme.MakeCard(this, 24, 578, w, 128, "选项");
             _chkMin = new CheckBox
             {
                 Text = "关闭窗口时最小化到托盘（不退出）",
@@ -166,27 +180,32 @@ namespace PhoneMic
             _chkAuto.CheckedChanged += delegate { _cfg.AutoStartOnLaunch = _chkAuto.Checked; _cfg.Save(); };
             c4.Controls.Add(_chkAuto);
 
-            // 注入方式：默认虚拟键码（聊天/语音软件吃这套）；个别程序只认扫描码时才勾这个
-            var chkScan = new CheckBox
+            // 注入方式：三种都试一遍，哪个能让目标软件有反应就用哪个
+            c4.Controls.Add(UiTheme.MakeLabel("按键注入方式", 20, 94, 130, 26, 9.5f, UiTheme.Sub));
+            _cboKeyMode = new ComboBox
             {
-                Text = "按键用扫描码方式注入（默认不用勾，只有个别程序不认模拟按键时才勾）",
-                Location = new Point(UiTheme.S(20), UiTheme.S(94)),
-                AutoSize = true,
-                ForeColor = UiTheme.Sub,
-                Font = UiTheme.Font(10f),
-                Checked = _cfg.UseScanCode
+                Location = new Point(UiTheme.S(150), UiTheme.S(92)),
+                Size = new Size(UiTheme.S(320), UiTheme.S(28)),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = UiTheme.Field,
+                ForeColor = UiTheme.Text
             };
-            chkScan.CheckedChanged += delegate
+            _cboKeyMode.Items.Add("虚拟键码（默认，先试这个）");
+            _cboKeyMode.Items.Add("扫描码（游戏或者特殊程序用）");
+            _cboKeyMode.Items.Add("消息投递（屏蔽了模拟按键的程序用）");
+            _cboKeyMode.SelectedIndex = Math.Max(0, Math.Min(2, _cfg.KeyMode));
+            _cboKeyMode.SelectedIndexChanged += delegate
             {
-                _cfg.UseScanCode = chkScan.Checked;
+                _cfg.KeyMode = _cboKeyMode.SelectedIndex;
                 _cfg.Save();
-                KeyInjector.UseScanCode = chkScan.Checked;
-                _owner.Log("按键注入方式改为：" + (chkScan.Checked ? "扫描码" : "虚拟键码"));
+                KeyInjector.Mode = (KeyInjector.InjectMode)_cfg.KeyMode;
+                _owner.Log("按键注入方式改为：" + _cboKeyMode.Text);
             };
-            c4.Controls.Add(chkScan);
+            c4.Controls.Add(_cboKeyMode);
 
             // ---------- 日志 ----------
-            var c5 = UiTheme.MakeCard(this, 24, 682, w, 200, "日志（出问题时把这里的内容发我）");
+            var c5 = UiTheme.MakeCard(this, 24, 722, w, 200, "日志（出问题时把这里的内容发我）");
             _txtLog = new TextBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(46)),
@@ -307,7 +326,38 @@ namespace PhoneMic
             _btnRestoreMic.Visible = isCable && !(string.IsNullOrEmpty(_cfg.PrevConsoleId) && string.IsNullOrEmpty(_cfg.PrevCommId));
 
             _owner.Log("系统麦克风 → 默认：" + (console ?? "无") + "；通信：" + (comm ?? "无"));
+            RefreshRenderInfo();
             _owner.NotifyMicState(isCable, console);
+        }
+
+        /// <summary>
+        /// 检查「默认播放设备」有没有被指到虚拟声卡。
+        /// 这种情况的典型症状：别的软件（网易云、QQ音乐）能播但没声音 —— 声音进了 CABLE Output 没人接。
+        /// </summary>
+        private void RefreshRenderInfo()
+        {
+            if (_lblRender == null) return;
+
+            string name = AudioOutput.GetDefaultRenderName(Role.Multimedia);
+            if (string.IsNullOrEmpty(name))
+            {
+                _lblRender.Text = "系统默认播放设备：读不到";
+                _lblRender.ForeColor = UiTheme.Amber;
+                return;
+            }
+
+            bool wrong = name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (wrong)
+            {
+                _lblRender.Text = "⚠ 系统默认播放设备是「" + name + "」→ 放歌会没声音，请改回扬声器";
+                _lblRender.ForeColor = UiTheme.Red;
+                _owner.Log("警告：默认播放设备指向了虚拟声卡（" + name + "），其他软件会没声音");
+            }
+            else
+            {
+                _lblRender.Text = "系统默认播放设备：" + name + "   ✓ 正常";
+                _lblRender.ForeColor = UiTheme.Green;
+            }
         }
 
         private static bool IsCable(string name)

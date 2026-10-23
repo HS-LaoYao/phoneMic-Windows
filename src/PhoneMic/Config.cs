@@ -16,7 +16,7 @@ namespace PhoneMic
         public int[] Keys = new int[0];           // 说话时要按住的键（虚拟键码，按顺序按下）
         public bool MinimizeToTray = true;        // 关窗口是否最小化到托盘
         public bool AutoStartOnLaunch = true;     // 启动即开始监听
-        public bool UseScanCode = false;          // 按键注入方式：false=虚拟键码（默认），true=扫描码
+        public int KeyMode = 0;                   // 按键注入方式：0=虚拟键码 1=扫描码 2=消息投递
 
         // 「一键设为默认麦克风」之前系统用的设备，用来还原
         public string PrevConsoleId = "";
@@ -55,7 +55,8 @@ namespace PhoneMic
                         case "keys": c.Keys = ParseKeys(v); break;
                         case "minimizeToTray": c.MinimizeToTray = v == "1"; break;
                         case "autoStart": c.AutoStartOnLaunch = v == "1"; break;
-                        case "useScanCode": c.UseScanCode = v == "1"; break;
+                        case "keyMode": c.KeyMode = int.TryParse(v, out int km) ? km : 0; break;
+                        case "useScanCode": if (v == "1") c.KeyMode = 1; break;
                         case "prevConsole": c.PrevConsoleId = v; break;
                         case "prevComm": c.PrevCommId = v; break;
                     }
@@ -75,7 +76,7 @@ namespace PhoneMic
                 sb.AppendLine("keys=" + FormatKeys(Keys));
                 sb.AppendLine("minimizeToTray=" + (MinimizeToTray ? "1" : "0"));
                 sb.AppendLine("autoStart=" + (AutoStartOnLaunch ? "1" : "0"));
-                sb.AppendLine("useScanCode=" + (UseScanCode ? "1" : "0"));
+                sb.AppendLine("keyMode=" + KeyMode);
                 sb.AppendLine("prevConsole=" + PrevConsoleId);
                 sb.AppendLine("prevComm=" + PrevCommId);
                 File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
