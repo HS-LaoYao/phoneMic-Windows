@@ -44,6 +44,7 @@ namespace PhoneMic
         private long _packets;
         private long _lastAudioTicks;
         private long _pttDownTicks;      // 本次「开始说话」的时刻
+        private long _lastDiscoverLog;   // 上一次记录「手机正在查找」的时间
         private int _silentTicks;
 
         private readonly List<string> _logBuf = new List<string>();
@@ -610,7 +611,13 @@ namespace PhoneMic
             _rx.PttDown += OnPttDown;
             _rx.PttUp += OnPttUp;
             _rx.Heartbeat += OnHeartbeat;
-            _rx.Discovered += delegate(string ip) { Ui(() => Log("手机正在查找本机：" + ip)); };
+            _rx.Discovered += delegate(string ip)
+            {
+                long now = Stopwatch.GetTimestamp();
+                if (now - _lastDiscoverLog < Stopwatch.Frequency * 3) return;   // 3 秒内只记一次
+                _lastDiscoverLog = now;
+                Ui(() => Log("手机正在查找本机：" + ip));
+            };
             try
             {
                 _rx.Start();
@@ -701,7 +708,21 @@ namespace PhoneMic
 
             // 收到音频包就说明手机在录音。不能只依赖 PTT 包 ——
             // 那个包小、又是单向的，一旦丢了状态就永远停在「待命」。
-            if (!_talking) Ui(() => SetTalking(true));
+            if (!_talking)
+            {
+                // 顺便把按键也补上：PTT 包可能丢了，但音频是连续的，用音频当触发源更可靠。
+                bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
+                if (hasKeys && !KeyInjector.IsHeld && !_micSuspended)
+                {
+                    bool ok;
+                    lock (_keyLock) ok = KeyInjector.Press(_cfg.Keys);
+                    _pttDownTicks = Stopwatch.GetTimestamp();
+                    _lastAudioTicks = _pttDownTicks;
+                    string desc = KeyInjector.Describe(_cfg.Keys);
+                    Ui(() => Log(ok ? "按下（由声音触发）：" + desc : "按键注入被拒绝：" + desc));
+                }
+                Ui(() => SetTalking(true));
+            }
         }
 
         private void OnPttDown()
