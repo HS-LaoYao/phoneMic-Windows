@@ -28,6 +28,7 @@ namespace PhoneMic
         public const byte TPttUp = 0x11;
         public const byte THeartbeat = 0x12;
         public const byte TAck = 0x22;
+        public const byte TAudioDown = 0x02;   // 电脑→手机 的音频（手机当耳机时用）
         public const byte TDiscover = 0x20;
         public const byte TDiscoverAck = 0x21;
 

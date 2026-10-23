@@ -16,12 +16,14 @@ namespace PhoneMic
     internal sealed class SettingsForm : Form
     {
         private const int W = 660;
-        private const int H = 940;
+        private const int H = 994;
 
         private readonly MainForm _owner;
         private readonly Config _cfg;
 
-        private Label _lblRender;
+        private Label _lblRender, _lblVol;
+        private TrackBar _trackVol;
+        private CheckBox _chkMutePc;
         private TextBox _txtAddr;
         private ComboBox _cboDevice, _cboKeyMode;
         private Label _lblVb, _lblMicConsole, _lblMicComm, _lblTest;
@@ -84,7 +86,7 @@ namespace PhoneMic
             c1.Controls.Add(btnCopy);
 
             // ---------- 输出设备 ----------
-            var c2 = UiTheme.MakeCard(this, 24, 136, w, 200, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
+            var c2 = UiTheme.MakeCard(this, 24, 136, w, 252, "音频路由（麦克风输出 / 扬声器 / 监听）");
             _cboDevice = new ComboBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(48)),
@@ -126,8 +128,49 @@ namespace PhoneMic
             };
             c2.Controls.Add(btnSound);
 
+            // 监听音量（模式②：手机的声音同时在扬声器放出来）
+            c2.Controls.Add(UiTheme.MakeLabel("监听音量", 20, 190, 90, 28, 9.5f, UiTheme.Sub));
+            _trackVol = new TrackBar
+            {
+                Location = new Point(UiTheme.S(112), UiTheme.S(184)),
+                Size = new Size(UiTheme.S(360), UiTheme.S(40)),
+                Minimum = 0,
+                Maximum = 100,
+                TickStyle = TickStyle.None,
+                Value = Math.Max(0, Math.Min(100, _cfg.MonitorVolume)),
+                BackColor = UiTheme.CardBg
+            };
+            _lblVol = UiTheme.MakeLabel(_cfg.MonitorVolume + "%", 486, 190, 70, 28, 9.5f, UiTheme.Text);
+            _trackVol.Scroll += delegate
+            {
+                _cfg.MonitorVolume = _trackVol.Value;
+                _cfg.Save();
+                _lblVol.Text = _trackVol.Value + "%";
+                _owner.ApplyMonitorVolume(_trackVol.Value / 100f);
+            };
+            c2.Controls.Add(_trackVol);
+            c2.Controls.Add(_lblVol);
+
+            // 模式③时是否把电脑扬声器静音
+            _chkMutePc = new CheckBox
+            {
+                Text = "模式③时静音电脑扬声器（声音只在手机里出）",
+                Location = new Point(UiTheme.S(20), UiTheme.S(224)),
+                AutoSize = true,
+                ForeColor = UiTheme.Sub,
+                Font = UiTheme.Font(10f),
+                Checked = _cfg.MutePcInHeadset
+            };
+            _chkMutePc.CheckedChanged += delegate
+            {
+                _cfg.MutePcInHeadset = _chkMutePc.Checked;
+                _cfg.Save();
+                _owner.ReloadAfterSettings();
+            };
+            c2.Controls.Add(_chkMutePc);
+
             // ---------- 系统麦克风 ----------
-            var c3 = UiTheme.MakeCard(this, 24, 352, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
+            var c3 = UiTheme.MakeCard(this, 24, 404, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
 
             _lblMicConsole = UiTheme.MakeLabel("默认设备：读取中…", 20, 48, w - 20 - 190, 26, 10f, UiTheme.Sub);
             c3.Controls.Add(_lblMicConsole);
@@ -155,7 +198,7 @@ namespace PhoneMic
             c3.Controls.Add(_lblTest);
 
             // ---------- 选项 ----------
-            var c4 = UiTheme.MakeCard(this, 24, 578, w, 128, "选项");
+            var c4 = UiTheme.MakeCard(this, 24, 630, w, 128, "选项");
             _chkMin = new CheckBox
             {
                 Text = "关闭窗口时最小化到托盘（不退出）",
@@ -205,7 +248,7 @@ namespace PhoneMic
             c4.Controls.Add(_cboKeyMode);
 
             // ---------- 日志 ----------
-            var c5 = UiTheme.MakeCard(this, 24, 722, w, 200, "日志（出问题时把这里的内容发我）");
+            var c5 = UiTheme.MakeCard(this, 24, 774, w, 200, "日志（出问题时把这里的内容发我）");
             _txtLog = new TextBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(46)),

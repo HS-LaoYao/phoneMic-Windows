@@ -20,6 +20,9 @@ namespace PhoneMic
 
         public event Action<string> Error;
 
+        /// <summary>播放音量 0~1（监听模式用来调大小，不动系统音量）</summary>
+        public float Volume = 1f;
+
         public bool IsPlaying { get { return _out != null && _out.PlaybackState == PlaybackState.Playing; } }
 
         /// <summary>列出所有正在工作的播放设备</summary>
@@ -104,13 +107,23 @@ namespace PhoneMic
             if (samples * 4 > _stereo.Length) {         // 包比预期大时按缓冲上限截断
                 samples = _stereo.Length / 4;
             }
+            float vol = Volume;
+            if (vol < 0f) vol = 0f;
+            if (vol > 1f) vol = 1f;
+
             for (int i = 0; i < samples; i++)
             {
-                byte lo = data[offset + i * 2];
-                byte hi = data[offset + i * 2 + 1];
+                short lo = (short)(data[offset + i * 2] & 0xFF);
+                short hi = data[offset + i * 2 + 1];
+                short s = (short)((hi << 8) | lo);
+
+                if (vol < 1f) s = (short)(s * vol);
+
                 int o = i * 4;
-                _stereo[o] = lo; _stereo[o + 1] = hi;   // 左
-                _stereo[o + 2] = lo; _stereo[o + 3] = hi; // 右
+                _stereo[o] = (byte)(s & 0xFF);
+                _stereo[o + 1] = (byte)((s >> 8) & 0xFF);
+                _stereo[o + 2] = _stereo[o];        // 右声道复制左声道
+                _stereo[o + 3] = _stereo[o + 1];
             }
             try { buf.AddSamples(_stereo, 0, samples * 4); }
             catch (Exception ex)
@@ -171,6 +184,20 @@ namespace PhoneMic
                 }
             }
             catch { return null; }
+        }
+
+        /// <summary>把系统默认播放设备静音 / 取消静音（模式③用）</summary>
+        public static void SetSystemMute(bool mute)
+        {
+            try
+            {
+                using (var en = new MMDeviceEnumerator())
+                {
+                    var d = en.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                    if (d != null) d.AudioEndpointVolume.Mute = mute;
+                }
+            }
+            catch { }
         }
 
         /// <summary>系统默认播放（扬声器）设备的名字 —— 用来检查是不是被改成了虚拟声卡</summary>

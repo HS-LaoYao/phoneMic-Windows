@@ -17,12 +17,17 @@ namespace PhoneMic
     {
         // 设计尺寸（96 DPI 下的逻辑单位）。实际像素由 UiTheme.S() 按 DPI 换算。
         private const int W = 660;
-        private const int H = 716;
+        private const int H = 780;
 
         private readonly Config _cfg;
 
         private UdpReceiver _rx;
-        private AudioOutput _audio;
+        private AudioOutput _audio;          // 手机声音 → 虚拟声卡（给微信/QQ）
+        private AudioOutput _monitor;        // 手机声音 → 扬声器（模式②，自己听）
+        private LoopbackSender _loop;        // 系统声音 → 手机（模式③）
+        private bool _weMutedPc;
+        private int _mode;
+        private Button[] _modeBtns;
         private KeyCapture _cap;
         private Timer _tick;
         private Timer _meter;
@@ -50,6 +55,7 @@ namespace PhoneMic
         {
             _cfg = Config.Load();
             KeyInjector.Mode = (KeyInjector.InjectMode)_cfg.KeyMode;
+            _mode = (_cfg.RouteMode >= 1 && _cfg.RouteMode <= 3) ? _cfg.RouteMode : 1;
 
             Text = "phoneMic";
             BackColor = UiTheme.Bg;
@@ -150,8 +156,23 @@ namespace PhoneMic
             _lblMeter.TextAlign = ContentAlignment.MiddleRight;
             c1.Controls.Add(_lblMeter);
 
+            // ---------- 使用模式（三选一）----------
+            string[] modeNames = { "① 只当麦克风", "② 麦克风 + 监听", "③ 手机当耳机" };
+            int bw = (w - 48 - 20) / 3;
+            _modeBtns = new Button[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var b = UiTheme.MakeButton(modeNames[i], 24 + i * (bw + 10), 356, bw, 44);
+                b.Font = UiTheme.Font(9.5f);
+                int idx = i + 1;
+                b.Click += delegate { SetMode(idx); };
+                Controls.Add(b);
+                _modeBtns[i] = b;
+            }
+            UpdateModeButtons();
+
             // ---------- 联动按键 ----------
-            var c2 = UiTheme.MakeCard(this, 24, 362, w - 48, 108, "说话时同时按住的键（不映射就留空）");
+            var c2 = UiTheme.MakeCard(this, 24, 416, w - 48, 108, "说话时同时按住的键（不映射就留空）");
 
             _lblKey = UiTheme.MakeLabel("（不映射）", 22, 50, w - 48 - 22 - 240, 38, 15f, UiTheme.Sub);
             _lblKey.Font = UiTheme.Font(15f, FontStyle.Bold);
@@ -179,7 +200,7 @@ namespace PhoneMic
             // ---------- 麦克风提示条（始终占位，避免布局跳动）----------
             _bar = new Panel
             {
-                Location = new Point(UiTheme.S(24), UiTheme.S(488)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(542)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(92)),
                 BackColor = UiTheme.CardBg
             };
@@ -200,7 +221,7 @@ namespace PhoneMic
             _btnStart = new Button
             {
                 Text = "开 始",
-                Location = new Point(UiTheme.S(24), UiTheme.S(600)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(654)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(64)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Blue,
@@ -215,7 +236,7 @@ namespace PhoneMic
             Controls.Add(_btnStart);
 
             // ---------- 底部一行 ----------
-            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 676, w - 52, 22, 9f, UiTheme.Sub);
+            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 730, w - 52, 22, 9f, UiTheme.Sub);
             _lblFoot.Cursor = Cursors.Hand;
             _lblFoot.Click += delegate { OpenSettings(); };
             Controls.Add(_lblFoot);
@@ -300,6 +321,112 @@ namespace PhoneMic
         private static bool IsCable(string name)
         {
             return name != null && name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        // ==================== 音频路由 ====================
+
+        private static string ModeText(int m)
+        {
+            switch (m)
+            {
+                case 2: return "② 麦克风 + 监听（手机声音同时在扬声器放）";
+                case 3: return "③ 手机当耳机（电脑声音送到手机）";
+                default: return "① 只当麦克风（扬声器不动）";
+            }
+        }
+
+        private void UpdateModeButtons()
+        {
+            if (_modeBtns == null) return;
+            for (int i = 0; i < _modeBtns.Length; i++)
+            {
+                bool on = (_mode == i + 1);
+                _modeBtns[i].BackColor = on ? UiTheme.Blue : UiTheme.Field;
+                _modeBtns[i].ForeColor = on ? Color.White : UiTheme.Sub;
+                _modeBtns[i].FlatAppearance.BorderSize = on ? 0 : 1;
+            }
+        }
+
+        private void SetMode(int m)
+        {
+            if (m == _mode) return;
+            _mode = m;
+            _cfg.RouteMode = m;
+            _cfg.Save();
+            UpdateModeButtons();
+            Log("使用模式改为：" + ModeText(m));
+
+            if (_running)                       // 运行中切模式 → 重挂路由
+            {
+                StopRouteExtras();
+                StartRouteExtras();
+            }
+        }
+
+        /// <summary>按当前模式挂上「监听」和「抓系统声音」两条附加通道</summary>
+        private void StartRouteExtras()
+        {
+            if (_mode >= 2)
+            {
+                try
+                {
+                    _monitor = new AudioOutput();
+                    _monitor.Volume = Math.Max(0f, Math.Min(1f, _cfg.MonitorVolume / 100f));
+                    _monitor.Start(AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Multimedia));
+                    Log("监听通道已开启，音量 " + _cfg.MonitorVolume + "%");
+                }
+                catch (Exception ex)
+                {
+                    _monitor = null;
+                    Log("监听通道启动失败：" + ex.Message);
+                }
+            }
+
+            if (_mode == 3)
+            {
+                try
+                {
+                    _loop = new LoopbackSender();
+                    _loop.FrameReady += delegate(byte[] pcm, int len)
+                    {
+                        var r = _rx;
+                        if (r != null) r.SendAudioToPeer(pcm, len);
+                    };
+                    _loop.Start();
+
+                    if (_cfg.MutePcInHeadset)
+                    {
+                        AudioOutput.SetSystemMute(true);
+                        _weMutedPc = true;
+                        Log("已静音电脑扬声器（手机当耳机）");
+                    }
+                    Log("已开始把电脑声音送到手机");
+                }
+                catch (Exception ex)
+                {
+                    _loop = null;
+                    Log("抓取系统声音失败：" + ex.Message);
+                }
+            }
+        }
+
+        /// <summary>设置页拖动监听音量时实时生效</summary>
+        internal void ApplyMonitorVolume(float vol)
+        {
+            var m = _monitor;
+            if (m != null) m.Volume = vol;
+        }
+
+        private void StopRouteExtras()
+        {
+            if (_loop != null) { _loop.Dispose(); _loop = null; }
+            if (_monitor != null) { _monitor.Dispose(); _monitor = null; }
+
+            if (_weMutedPc)                     // 只还原我们自己静音的
+            {
+                AudioOutput.SetSystemMute(false);
+                _weMutedPc = false;
+            }
         }
 
         /// <summary>
@@ -445,7 +572,8 @@ namespace PhoneMic
             SetStatus("等待手机连接", UiTheme.Amber, "在手机上打开 phoneMic 会自动找到这台电脑");
             _tick.Start();
             _meter.Start();
-            Log("开始监听 UDP " + Proto.Port);
+            StartRouteExtras();
+            Log("开始监听 UDP " + Proto.Port + "，模式：" + ModeText(_mode));
         }
 
         private bool StartAudio()
@@ -478,6 +606,7 @@ namespace PhoneMic
         {
             _meter.Stop();
             _tick.Stop();
+            StopRouteExtras();
             lock (_keyLock) KeyInjector.ReleaseAll();
             if (_rx != null) { _rx.Dispose(); _rx = null; }
             StopAudio();
@@ -499,6 +628,9 @@ namespace PhoneMic
             int count = len - Proto.AudioHeader;
             var a = _audio;
             if (a != null) a.AddMonoPcm(buf, Proto.AudioHeader, count);
+
+            var mon = _monitor;                       // 模式②：同一份声音再放一遍到扬声器
+            if (mon != null) mon.AddMonoPcm(buf, Proto.AudioHeader, count);
 
             float lv = Rms(buf, Proto.AudioHeader, count);
             if (lv > _peak) _peak = lv;

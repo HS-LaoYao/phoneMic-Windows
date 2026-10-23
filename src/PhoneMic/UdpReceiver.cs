@@ -32,6 +32,30 @@ namespace PhoneMic
         /// <summary>对端 IP（最近一次发包的手机）</summary>
         public string PeerIp { get; private set; }
 
+        /// <summary>对端完整地址（IP + 端口），下行音频要往这里发</summary>
+        private IPEndPoint _peerEp;
+
+        private int _downSeq;
+
+        /// <summary>把一帧音频发给手机（模式③：手机当耳机）</summary>
+        public void SendAudioToPeer(byte[] pcm, int len)
+        {
+            var ep = _peerEp;
+            var s = _udp;
+            if (ep == null || s == null || len <= 0) return;
+            try
+            {
+                byte[] pkt = new byte[3 + len];
+                pkt[0] = Proto.TAudioDown;
+                pkt[1] = (byte)((_downSeq >> 8) & 0xFF);
+                pkt[2] = (byte)(_downSeq & 0xFF);
+                _downSeq = (_downSeq + 1) & 0xFFFF;
+                Buffer.BlockCopy(pcm, 0, pkt, 3, len);
+                s.Send(pkt, pkt.Length, ep);
+            }
+            catch { }
+        }
+
         public string MachineName = Environment.MachineName;
 
         public void Start()
@@ -79,6 +103,7 @@ namespace PhoneMic
 
                 LastPacketAt = Stopwatch.GetTimestamp();
                 PeerIp = ep.Address.ToString();
+                _peerEp = new IPEndPoint(ep.Address, ep.Port);
 
                 switch (data[0])
                 {
