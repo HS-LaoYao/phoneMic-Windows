@@ -15,6 +15,10 @@ namespace PhoneMic
     /// </summary>
     internal sealed class MainForm : Form
     {
+        // 设计尺寸（96 DPI 下的逻辑单位）。实际像素由 UiTheme.S() 按 DPI 换算。
+        private const int W = 660;
+        private const int H = 716;
+
         private readonly Config _cfg;
 
         private UdpReceiver _rx;
@@ -47,17 +51,20 @@ namespace PhoneMic
             _cfg = Config.Load();
 
             Text = "phoneMic";
-            ClientSize = new Size(660, 740);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
             BackColor = UiTheme.Bg;
             ForeColor = UiTheme.Text;
             Font = UiTheme.Font(10.5f);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            AutoScaleDimensions = new SizeF(96f, 96f);
+            // 缩放全部由 UiTheme.S() 负责，这里必须关掉 WinForms 自己的缩放，
+            // 否则会和我们的换算叠加，界面就会错位。
+            AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
             Icon = MakeIcon();
+
+            UiTheme.Init(this);
+            ClientSize = new Size(UiTheme.S(W), UiTheme.S(H));
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
 
             BuildUi();
             BuildTray();
@@ -98,10 +105,10 @@ namespace PhoneMic
 
         private void BuildUi()
         {
-            int w = ClientSize.Width;
+            int w = W;                       // 设计宽度，卡片/按钮内部会按 DPI 换算
 
             Controls.Add(UiTheme.MakeLabel("phoneMic", 24, 16, 300, 40, 18f, UiTheme.Text));
-            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风", 26, 54, 300, 24, 10f, UiTheme.Sub));
+            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风", 26, 58, 320, 24, 10f, UiTheme.Sub));
 
             _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 108, 24, 108, 38);
             _btnSettings.Click += delegate
@@ -112,10 +119,15 @@ namespace PhoneMic
             Controls.Add(_btnSettings);
 
             // ---------- 状态 + 波形 ----------
-            var c1 = UiTheme.MakeCard(this, 24, 92, w - 48, 272, "连接状态");
+            var c1 = UiTheme.MakeCard(this, 24, 92, w - 48, 252, "连接状态");
 
-            _dot = new Panel { Location = new Point(22, 36), Size = new Size(20, 20), BackColor = UiTheme.Sub };
-            UiTheme.ApplyRound(_dot, 10);
+            _dot = new Panel
+            {
+                Location = new Point(UiTheme.S(22), UiTheme.S(36)),
+                Size = new Size(UiTheme.S(20), UiTheme.S(20)),
+                BackColor = UiTheme.Sub
+            };
+            UiTheme.ApplyRound(_dot, UiTheme.S(10));
             c1.Controls.Add(_dot);
 
             _lblStatus = UiTheme.MakeLabel("未开始", 54, 26, w - 48 - 22 - 54 - 20, 44, 21f, UiTheme.Text);
@@ -127,17 +139,17 @@ namespace PhoneMic
 
             _wave = new Waveform
             {
-                Location = new Point(22, 112),
-                Size = new Size(w - 48 - 44, 118)
+                Location = new Point(UiTheme.S(22), UiTheme.S(112)),
+                Size = new Size(UiTheme.S(w - 48 - 44), UiTheme.S(92))
             };
             c1.Controls.Add(_wave);
 
-            _lblMeter = UiTheme.MakeLabel("电平 0%", 22, 236, w - 48 - 44, 24, 9.5f, UiTheme.Sub);
+            _lblMeter = UiTheme.MakeLabel("电平 0%", 22, 210, w - 48 - 44, 24, 9.5f, UiTheme.Sub);
             _lblMeter.TextAlign = ContentAlignment.MiddleRight;
             c1.Controls.Add(_lblMeter);
 
             // ---------- 联动按键 ----------
-            var c2 = UiTheme.MakeCard(this, 24, 382, w - 48, 108, "说话时同时按住的键（不映射就留空）");
+            var c2 = UiTheme.MakeCard(this, 24, 362, w - 48, 108, "说话时同时按住的键（不映射就留空）");
 
             _lblKey = UiTheme.MakeLabel("（不映射）", 22, 50, w - 48 - 22 - 240, 38, 15f, UiTheme.Sub);
             _lblKey.Font = UiTheme.Font(15f, FontStyle.Bold);
@@ -158,8 +170,13 @@ namespace PhoneMic
             c2.Controls.Add(_btnClear);
 
             // ---------- 麦克风提示条（始终占位，避免布局跳动）----------
-            _bar = new Panel { Location = new Point(24, 508), Size = new Size(w - 48, 92), BackColor = UiTheme.CardBg };
-            UiTheme.ApplyRound(_bar, 16);
+            _bar = new Panel
+            {
+                Location = new Point(UiTheme.S(24), UiTheme.S(488)),
+                Size = new Size(UiTheme.S(w - 48), UiTheme.S(92)),
+                BackColor = UiTheme.CardBg
+            };
+            UiTheme.ApplyRound(_bar, UiTheme.S(16));
             Controls.Add(_bar);
 
             _lblBar = UiTheme.MakeLabel("", 22, 20, w - 48 - 22 - 24, 52, 10.5f, UiTheme.Sub);
@@ -176,8 +193,8 @@ namespace PhoneMic
             _btnStart = new Button
             {
                 Text = "开 始",
-                Location = new Point(24, 620),
-                Size = new Size(w - 48, 64),
+                Location = new Point(UiTheme.S(24), UiTheme.S(600)),
+                Size = new Size(UiTheme.S(w - 48), UiTheme.S(64)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Blue,
                 ForeColor = Color.White,
@@ -186,12 +203,12 @@ namespace PhoneMic
             };
             _btnStart.FlatAppearance.BorderSize = 0;
             _btnStart.Click += delegate { if (_running) StopAll(); else StartAll(); };
-            UiTheme.ApplyRound(_btnStart, 14);
-            _btnStart.Resize += delegate { UiTheme.ApplyRound(_btnStart, 14); };
+            UiTheme.ApplyRound(_btnStart, UiTheme.S(14));
+            _btnStart.Resize += delegate { UiTheme.ApplyRound(_btnStart, UiTheme.S(14)); };
             Controls.Add(_btnStart);
 
             // ---------- 底部一行 ----------
-            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 700, w - 52, 22, 9f, UiTheme.Sub);
+            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 676, w - 52, 22, 9f, UiTheme.Sub);
             _lblFoot.Cursor = Cursors.Hand;
             _lblFoot.Click += delegate { OpenSettings(); };
             Controls.Add(_lblFoot);
@@ -288,8 +305,8 @@ namespace PhoneMic
                 _bar.BackColor = Color.FromArgb(0x14, 0x2B, 0x1D);
                 _lblBar.Text = "✓ 系统麦克风设置正确 —— 其他软件现在能收到手机的声音";
                 _lblBar.ForeColor = UiTheme.Green;
-                _lblBar.Top = 34;
-                _lblBar.Height = 24;
+                _lblBar.Top = UiTheme.S(34);
+                _lblBar.Height = UiTheme.S(24);
                 _btnFixMic.Visible = false;
             }
             else
@@ -298,11 +315,11 @@ namespace PhoneMic
                 _lblBar.Text = "系统麦克风现在是「" + (string.IsNullOrEmpty(currentName) ? "未知" : currentName) +
                                "」\nQQ、微信、语音输入录的是它 —— 所以收不到手机的声音";
                 _lblBar.ForeColor = UiTheme.Amber;
-                _lblBar.Top = 18;
-                _lblBar.Height = 56;
+                _lblBar.Top = UiTheme.S(18);
+                _lblBar.Height = UiTheme.S(56);
                 _btnFixMic.Visible = true;
             }
-            UiTheme.ApplyRound(_bar, 16);
+            UiTheme.ApplyRound(_bar, UiTheme.S(16));
         }
 
         internal void ReloadAfterSettings()

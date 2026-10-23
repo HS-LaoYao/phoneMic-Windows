@@ -15,6 +15,9 @@ namespace PhoneMic
     /// </summary>
     internal sealed class SettingsForm : Form
     {
+        private const int W = 660;
+        private const int H = 880;
+
         private readonly MainForm _owner;
         private readonly Config _cfg;
 
@@ -33,16 +36,17 @@ namespace PhoneMic
             _cfg = cfg;
 
             Text = "phoneMic · 设置";
-            ClientSize = new Size(660, 880);
+            BackColor = UiTheme.Bg;
+            ForeColor = UiTheme.Text;
+            Font = UiTheme.Font(10.5f);
+            AutoScaleMode = AutoScaleMode.None;   // 缩放由 UiTheme.S() 统一负责
+
+            UiTheme.Init(this);
+            ClientSize = new Size(UiTheme.S(W), UiTheme.S(H));
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            BackColor = UiTheme.Bg;
-            ForeColor = UiTheme.Text;
-            Font = UiTheme.Font(10.5f);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            AutoScaleDimensions = new SizeF(96f, 96f);
 
             BuildUi();
             LoadDevices();
@@ -54,14 +58,14 @@ namespace PhoneMic
 
         private void BuildUi()
         {
-            int w = ClientSize.Width - 48;
+            int w = W - 48;
 
             // ---------- 本机地址 ----------
             var c1 = UiTheme.MakeCard(this, 24, 20, w, 100, "本机地址（手机自动发现，一般不用管）");
             _txtAddr = new TextBox
             {
-                Location = new Point(20, 48),
-                Size = new Size(w - 20 - 132, 34),
+                Location = new Point(UiTheme.S(20), UiTheme.S(48)),
+                Size = new Size(UiTheme.S(w - 20 - 132), UiTheme.S(34)),
                 ReadOnly = true,
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = UiTheme.Field,
@@ -82,8 +86,8 @@ namespace PhoneMic
             var c2 = UiTheme.MakeCard(this, 24, 136, w, 160, "输出设备（选虚拟声卡，声音才能被别的软件当麦克风）");
             _cboDevice = new ComboBox
             {
-                Location = new Point(20, 48),
-                Size = new Size(w - 20 - 124, 30),
+                Location = new Point(UiTheme.S(20), UiTheme.S(48)),
+                Size = new Size(UiTheme.S(w - 20 - 124), UiTheme.S(30)),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Field,
@@ -141,7 +145,7 @@ namespace PhoneMic
             _chkMin = new CheckBox
             {
                 Text = "关闭窗口时最小化到托盘（不退出）",
-                Location = new Point(20, 48),
+                Location = new Point(UiTheme.S(20), UiTheme.S(48)),
                 AutoSize = true,
                 ForeColor = UiTheme.Sub,
                 Font = UiTheme.Font(10f),
@@ -153,7 +157,7 @@ namespace PhoneMic
             _chkAuto = new CheckBox
             {
                 Text = "打开程序时自动开始监听",
-                Location = new Point(20, 72),
+                Location = new Point(UiTheme.S(20), UiTheme.S(72)),
                 AutoSize = true,
                 ForeColor = UiTheme.Sub,
                 Font = UiTheme.Font(10f),
@@ -166,8 +170,8 @@ namespace PhoneMic
             var c5 = UiTheme.MakeCard(this, 24, 654, w, 200, "日志（出问题时把这里的内容发我）");
             _txtLog = new TextBox
             {
-                Location = new Point(20, 46),
-                Size = new Size(w - 40, 108),
+                Location = new Point(UiTheme.S(20), UiTheme.S(46)),
+                Size = new Size(UiTheme.S(w - 40), UiTheme.S(108)),
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,

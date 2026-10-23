@@ -8,6 +8,30 @@ namespace PhoneMic
     /// <summary>统一的外观：颜色、字体、圆角卡片、扁平按钮。两个窗口共用。</summary>
     internal static class UiTheme
     {
+        // ===== DPI 缩放 =====
+        //
+        // 界面全部用代码搭，坐标是「设计单位」（按 96 DPI 想的）。
+        // 但字体是按磅值渲染的 —— 在 150% 缩放下 10pt 的物理像素是 96 DPI 的 1.5 倍。
+        // 如果坐标不跟着放大，文字就会比它的框大 1.5 倍，挤在一起甚至被裁掉。
+        // 所以所有坐标都过一遍 S()，按当前 DPI 换算成实际像素。
+        private static float _scale = 1f;
+
+        /// <summary>在窗体构造时调用一次，取得当前 DPI 缩放比例</summary>
+        public static void Init(Control c)
+        {
+            float dpi = 96f;
+            try { using (var g = c.CreateGraphics()) dpi = g.DpiX; }
+            catch { }
+            if (dpi < 72f || dpi > 480f) dpi = 96f;
+            _scale = dpi / 96f;
+        }
+
+        public static int S(int v) { return (int)Math.Round(v * _scale); }
+
+        public static float S(float v) { return v * _scale; }
+
+        public static float Scale { get { return _scale; } }
+
         public static readonly Color Bg = Color.FromArgb(0x12, 0x16, 0x1A);
         public static readonly Color CardBg = Color.FromArgb(0x1B, 0x22, 0x2A);
         public static readonly Color Field = Color.FromArgb(0x0F, 0x14, 0x19);
@@ -60,8 +84,8 @@ namespace PhoneMic
             var b = new Button
             {
                 Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, h),
+                Location = new Point(S(x), S(y)),
+                Size = new Size(S(w), S(h)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Field,
                 ForeColor = Text,
@@ -78,11 +102,11 @@ namespace PhoneMic
         {
             var p = new Panel
             {
-                Location = new Point(x, y),
-                Size = new Size(w, h),
+                Location = new Point(S(x), S(y)),
+                Size = new Size(S(w), S(h)),
                 BackColor = CardBg
             };
-            ApplyRound(p, 16);
+            ApplyRound(p, S(16));
 
             p.Controls.Add(new Label
             {
@@ -90,7 +114,7 @@ namespace PhoneMic
                 ForeColor = Sub,
                 Font = Font(10f),
                 AutoSize = true,
-                Location = new Point(20, 16)
+                Location = new Point(S(20), S(16))
             });
             parent.Controls.Add(p);
             return p;
@@ -101,8 +125,8 @@ namespace PhoneMic
             return new Label
             {
                 Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, h),
+                Location = new Point(S(x), S(y)),
+                Size = new Size(S(w), S(h)),
                 Font = Font(size),
                 ForeColor = color,
                 AutoEllipsis = true,

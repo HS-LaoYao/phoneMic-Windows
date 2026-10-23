@@ -26,6 +26,7 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=..\src\PhoneMic\app.ico
 ; 语言：默认中文
 ShowLanguageDialog=no
 

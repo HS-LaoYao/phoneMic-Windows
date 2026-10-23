@@ -7,6 +7,8 @@
     <RootNamespace>PhoneMic</RootNamespace>
     <LangVersion>7.3</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 程序图标：桌面快捷方式 / 任务栏 / 窗口标题都用它 -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <DebugType>none</DebugType>
     <Deterministic>true</Deterministic>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

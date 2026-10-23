@@ -15,8 +15,8 @@ namespace PhoneMic
     {
         private const int BarCount = 90;
 
-        private static readonly Color CBg = Color.FromArgb(0x0E, 0x12, 0x17);
-        private static readonly Color CGrid = Color.FromArgb(0x1E, 0x25, 0x2D);
+        private static readonly Color CBg = Color.FromArgb(0x15, 0x1C, 0x23);
+        private static readonly Color CGrid = Color.FromArgb(0x22, 0x2A, 0x33);
         private static readonly Color CGreen = Color.FromArgb(0x3F, 0xB9, 0x50);
         private static readonly Color CAmber = Color.FromArgb(0xD2, 0x99, 0x22);
         private static readonly Color CRed = Color.FromArgb(0xF8, 0x51, 0x49);
@@ -92,7 +92,7 @@ namespace PhoneMic
             }
 
             // 中线
-            using (var pen = new Pen(Color.FromArgb(0x2C, 0x35, 0x40)))
+            using (var pen = new Pen(Color.FromArgb(0x39, 0x43, 0x4F)))
                 g.DrawLine(pen, 0, mid, w, mid);
         }
     }
