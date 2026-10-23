@@ -477,8 +477,7 @@ namespace PhoneMic
                 {
                     Log("没找到虚拟声卡，模式③不可用");
                     MessageBox.Show(this,
-                        "模式③需要一个虚拟声卡才能把电脑声音接到手机。
-请先在设置里安装虚拟声卡。",
+                        "模式③需要一个虚拟声卡才能把电脑声音接到手机。\n请先在设置里安装虚拟声卡。",
                         "手机当音响", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
