@@ -30,7 +30,9 @@ namespace PhoneMic
             _cap.StartRecording();
 
             // 转单声道 → 需要时重采样到 48k
-            ISampleProvider sp = _cap.ToSampleProvider();
+            // 注意：WasapiLoopbackCapture 是 IWaveIn，不能直接 ToSampleProvider，
+            // 要先套一层 WaveInProvider（把事件式采集转成可读的 IWaveProvider）。
+            ISampleProvider sp = new WaveInProvider(_cap).ToSampleProvider();
             if (sp.WaveFormat.Channels == 2)
                 sp = new StereoToMonoSampleProvider(sp);
             if (sp.WaveFormat.SampleRate != Proto.SampleRate)
