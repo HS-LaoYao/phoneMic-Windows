@@ -79,6 +79,33 @@ namespace PhoneMic
 
         public static InjectMode Mode = InjectMode.VirtualKey;
 
+        // ===== 「作用窗口」：选定程序后，按键消息直接投给它（后台，不切前台）=====
+
+        /// <summary>目标进程名（如 WorkBuddy）。空 = 跟随当前前台窗口，走 SendInput</summary>
+        public static string TargetExe = "";
+        /// <summary>目标窗口标题片段，用于同名进程开多个窗口时二次定位。可空</summary>
+        public static string TargetTitle = "";
+
+        private static IntPtr _targetHwnd;
+        private static int _targetAt;
+
+        /// <summary>
+        /// 找到目标窗口现在的句柄。
+        /// 缓存 1 秒 —— 按住期间每 400ms 就要重发一次按下，每次都重新枚举窗口太浪费；
+        /// 而 1 秒的延迟也足够程序重启后自动跟上。
+        /// </summary>
+        private static IntPtr ResolveTarget()
+        {
+            if (string.IsNullOrEmpty(TargetExe)) return IntPtr.Zero;
+
+            int now = Environment.TickCount;
+            if (WinTargetFinder.IsAlive(_targetHwnd) && now - _targetAt < 1000) return _targetHwnd;
+
+            _targetHwnd = WinTargetFinder.Find(TargetExe, TargetTitle);
+            _targetAt = now;
+            return _targetHwnd;
+        }
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
@@ -162,6 +189,8 @@ namespace PhoneMic
         public static bool Tap(int[] keys, int holdMs)
         {
             if (keys == null || keys.Length == 0) return true;
+
+            ReleaseAll();                                 // 先松开长按中的 Alt，别叠在一起
             bool ok = true;
             foreach (int vk in keys) ok &= Send(vk, true);
             System.Threading.Thread.Sleep(holdMs > 0 ? holdMs : 50);
@@ -172,9 +201,12 @@ namespace PhoneMic
         /// <summary>测试注入：按下 → 等一会 → 松开，返回是否每次都成功</summary>
         public static bool TestPress(int vk, int holdMs)
         {
+            // 后台投递不改变全局键状态，这时候读回来说是「没按下」是正常的，别当成失败
+            bool hasTarget = ResolveTarget() != IntPtr.Zero;
+
             bool ok = Send(vk, true);
             System.Threading.Thread.Sleep(holdMs);
-            ok &= IsKeyDown(vk);          // 读回来确认系统认了这个按下
+            if (!hasTarget) ok &= IsKeyDown(vk);
             ok &= Send(vk, false);
             return ok;
         }
@@ -216,8 +248,12 @@ namespace PhoneMic
             bool ext;
             ToBaseKey(vk, out baseVk, out ext);
 
+            // 选了「作用窗口」就走后台投递：消息直接塞进那个窗口的队列，不碰焦点
+            IntPtr target = ResolveTarget();
+            if (target != IntPtr.Zero) return PostTo(target, baseVk, ext, down);
+
             if (Mode == InjectMode.Message)
-                return SendByMessage(baseVk, ext, down);
+                return PostTo(GetForegroundWindow(), baseVk, ext, down);
 
             uint flags = 0;
             ushort wVk = (ushort)baseVk;
@@ -256,18 +292,19 @@ namespace PhoneMic
             bool ok = SendInput(1, arr, Marshal.SizeOf(typeof(INPUT))) == 1;
 
             // 双路模式：再补一份窗口消息，防止目标程序只认消息不认注入
-            if (Mode == InjectMode.Dual) SendByMessage(baseVk, ext, down);
+            if (Mode == InjectMode.Dual) PostTo(GetForegroundWindow(), baseVk, ext, down);
             return ok;
         }
 
         /// <summary>
-        /// 把按键直接投递到当前前台窗口。
+        /// 把按键消息直接投递给指定窗口（可以不是前台窗口）。
+        ///
         /// 有些程序会过滤掉 SendInput 产生的「注入」事件，但对正常的窗口消息照收不误，
-        /// 这条路就是给它们准备的。缺点是只影响那一个窗口，而且不改变全局键状态。
+        /// 这条路就是给它们准备的。代价：只影响那一个窗口，而且**不改变全局键状态** ——
+        /// 用 GetAsyncKeyState 读键盘的程序收不到，这是原理限制，绕不过去。
         /// </summary>
-        private static bool SendByMessage(int baseVk, bool ext, bool down)
+        private static bool PostTo(IntPtr h, int baseVk, bool ext, bool down)
         {
-            IntPtr h = GetForegroundWindow();
             if (h == IntPtr.Zero) return false;
 
             bool isAlt = baseVk == 0x12;

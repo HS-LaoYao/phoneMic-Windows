@@ -18,6 +18,10 @@ namespace PhoneMic
         public bool AutoStartOnLaunch = true;     // 启动即开始监听
         public int KeyMode = 0;                   // 按键注入方式：0=虚拟键码 1=扫描码 2=消息投递 3=双路
 
+        // ===== 作用窗口：选定程序后，说话前自动把它切到前台 =====
+        public string TargetExe = "";             // 目标进程名（不含 .exe），空 = 跟随当前前台窗口
+        public string TargetTitle = "";           // 窗口标题片段，同名进程多开时用来定位
+
         // ===== 音频路由 =====
         public int RouteMode = 1;                 // 1=只当麦克风 2=麦克风+监听 3=手机当耳机
         public int MonitorVolume = 60;            // 监听音量 0~100
@@ -61,6 +65,8 @@ namespace PhoneMic
                         case "minimizeToTray": c.MinimizeToTray = v == "1"; break;
                         case "autoStart": c.AutoStartOnLaunch = v == "1"; break;
                         case "keyMode": c.KeyMode = int.TryParse(v, out int km) ? km : 0; break;
+                        case "targetExe": c.TargetExe = v; break;
+                        case "targetTitle": c.TargetTitle = v; break;
                         case "routeMode": c.RouteMode = int.TryParse(v, out int rm) ? rm : 1; break;
                         case "monitorVolume": c.MonitorVolume = int.TryParse(v, out int mv) ? mv : 60; break;
                         case "mutePcInHeadset": c.MutePcInHeadset = v == "1"; break;
@@ -85,6 +91,8 @@ namespace PhoneMic
                 sb.AppendLine("minimizeToTray=" + (MinimizeToTray ? "1" : "0"));
                 sb.AppendLine("autoStart=" + (AutoStartOnLaunch ? "1" : "0"));
                 sb.AppendLine("keyMode=" + KeyMode);
+                sb.AppendLine("targetExe=" + TargetExe);
+                sb.AppendLine("targetTitle=" + TargetTitle);
                 sb.AppendLine("routeMode=" + RouteMode);
                 sb.AppendLine("monitorVolume=" + MonitorVolume);
                 sb.AppendLine("mutePcInHeadset=" + (MutePcInHeadset ? "1" : "0"));

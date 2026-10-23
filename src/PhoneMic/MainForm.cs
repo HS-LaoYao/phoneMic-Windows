@@ -17,7 +17,7 @@ namespace PhoneMic
     {
         // 设计尺寸（96 DPI 下的逻辑单位）。实际像素由 UiTheme.S() 按 DPI 换算。
         private const int W = 660;
-        private const int H = 780;
+        private const int H = 892;
 
         private readonly Config _cfg;
 
@@ -53,11 +53,14 @@ namespace PhoneMic
         private Panel _dot, _bar;
         private Label _lblStatus, _lblDetail, _lblMeter, _lblKey, _lblFoot, _lblBar;
         private Waveform _wave;
+        private ComboBox _cboTarget;
+        private List<WinTarget> _targets = new List<WinTarget>();
         private Button _btnRecord, _btnClear, _btnStart, _btnFixMic, _btnSettings;
 
         public MainForm()
         {
             _cfg = Config.Load();
+            ApplyTarget();
             KeyInjector.Mode = (KeyInjector.InjectMode)_cfg.KeyMode;
             _mode = (_cfg.RouteMode >= 1 && _cfg.RouteMode <= 3) ? _cfg.RouteMode : 1;
 
@@ -78,6 +81,7 @@ namespace PhoneMic
             StartPosition = FormStartPosition.CenterScreen;
 
             BuildUi();
+            LoadTargets();
             BuildTray();
 
             _tick = new Timer();
@@ -201,10 +205,35 @@ namespace PhoneMic
             };
             c2.Controls.Add(_btnClear);
 
+            // ---------- 作用窗口 ----------
+            var c3 = UiTheme.MakeCard(this, 24, 542, w - 48, 104, "作用窗口（按键发给哪个程序）");
+
+            _cboTarget = new ComboBox
+            {
+                Location = new Point(UiTheme.S(20), UiTheme.S(40)),
+                Size = new Size(UiTheme.S(w - 48 - 20 - 96 - 12 - 20), UiTheme.S(30)),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = UiTheme.Field,
+                ForeColor = UiTheme.Text
+            };
+            _cboTarget.SelectedIndexChanged += OnTargetChanged;
+            c3.Controls.Add(_cboTarget);
+
+            var btnRefreshTarget = UiTheme.MakeButton("刷新", w - 48 - 20 - 96, 39, 96, 32);
+            btnRefreshTarget.Font = UiTheme.Font(9.5f);
+            btnRefreshTarget.Click += delegate { LoadTargets(); };
+            c3.Controls.Add(btnRefreshTarget);
+
+            c3.Controls.Add(UiTheme.MakeLabel(
+                "默认＝发给当前前台窗口。选定程序后直接把按键消息投给它，不切前台（列表＝Alt+Tab 里那些）；"
+                + "少数程序不吃这一套，用「测试」试一下就知道",
+                20, 74, w - 48 - 40, 24, 9f, UiTheme.Sub));
+
             // ---------- 麦克风提示条（始终占位，避免布局跳动）----------
             _bar = new Panel
             {
-                Location = new Point(UiTheme.S(24), UiTheme.S(542)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(662)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(92)),
                 BackColor = UiTheme.CardBg
             };
@@ -225,7 +254,7 @@ namespace PhoneMic
             _btnStart = new Button
             {
                 Text = "开 始",
-                Location = new Point(UiTheme.S(24), UiTheme.S(654)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(770)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(64)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Blue,
@@ -240,7 +269,7 @@ namespace PhoneMic
             Controls.Add(_btnStart);
 
             // ---------- 底部一行 ----------
-            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 730, w - 52, 22, 9f, UiTheme.Sub);
+            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 846, w - 52, 22, 9f, UiTheme.Sub);
             _lblFoot.Cursor = Cursors.Hand;
             _lblFoot.Click += delegate { OpenSettings(); };
             Controls.Add(_lblFoot);
@@ -337,6 +366,63 @@ namespace PhoneMic
                 case 3: return "③ 手机当音响：电脑声音全从手机出，音响不出声";
                 default: return "① 只当麦克风：电脑声音照常从音响出";
             }
+        }
+
+        // ==================== 作用窗口 ====================
+
+        /// <summary>把配置里的目标写进 KeyInjector（配置改了、启动都要调一次）</summary>
+        private void ApplyTarget()
+        {
+            KeyInjector.TargetExe = _cfg.TargetExe ?? "";
+            KeyInjector.TargetTitle = _cfg.TargetTitle ?? "";
+        }
+
+        /// <summary>重新枚举任务栏上的窗口填进下拉框</summary>
+        private void LoadTargets()
+        {
+            if (_cboTarget == null) return;
+            _targets = WinTargetFinder.Enumerate();
+
+            int sel = 0;
+            _cboTarget.Items.Clear();
+            _cboTarget.Items.Add("（默认）发给当前前台窗口");
+            for (int i = 0; i < _targets.Count; i++)
+            {
+                _cboTarget.Items.Add(_targets[i].Display);
+                if (string.IsNullOrEmpty(_cfg.TargetExe)) continue;
+                // 进程名相同；配了标题片段就还要标题对得上才算选中
+                if (string.Equals(_targets[i].Exe, _cfg.TargetExe, StringComparison.OrdinalIgnoreCase)
+                    && (string.IsNullOrEmpty(_cfg.TargetTitle)
+                        || _targets[i].Title.IndexOf(_cfg.TargetTitle, StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    if (sel == 0) sel = i + 1;
+                }
+            }
+
+            _cboTarget.SelectedIndexChanged -= OnTargetChanged;   // 填充期间别触发
+            _cboTarget.SelectedIndex = sel;
+            _cboTarget.SelectedIndexChanged += OnTargetChanged;
+
+        }
+
+        private void OnTargetChanged(object sender, EventArgs e)
+        {
+            int i = _cboTarget.SelectedIndex;
+            if (i <= 0)
+            {
+                _cfg.TargetExe = "";
+                _cfg.TargetTitle = "";
+                Log("作用窗口：跟随当前前台窗口");
+            }
+            else
+            {
+                var t = _targets[i - 1];
+                _cfg.TargetExe = t.Exe;
+                _cfg.TargetTitle = t.Title;
+                Log("作用窗口：" + t.Exe + "（按键直接投给它，不切前台）");
+            }
+            ApplyTarget();
+            _cfg.Save();
         }
 
         private void UpdateModeButtons()

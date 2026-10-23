@@ -2,6 +2,16 @@
 
 把手机当电脑麦克风（和耳机）。配套手机端见 `phoneMic-Android`。
 
+## 下载
+
+发行版页面（安装包 + 更新日志）：
+
+- 码云　<https://gitee.com/heishanyao_admin/phoneMic-Windows/releases>
+- GitHub　<https://github.com/HS-LaoYao/phoneMic-Windows/releases>
+
+下 `phoneMic-setup.exe`，双击安装即可（VB-CABLE 虚拟声卡驱动已随包附带）。
+程序里「设置 → 关于 / 更新 → 检查更新」也能直接拉最新版。
+
 ## 三种使用模式
 
 | 模式 | 手机说话 | 电脑自己的声音 | 手机声音去哪 |
