@@ -22,7 +22,6 @@ namespace PhoneMic
 
         private readonly byte[] _frame = new byte[Proto.FrameBytes];
         private int _frameFill;
-        private long _framesSent;
 
         // 采样率转换用的状态（线性插值）
         private double _ratio = 1.0;    // 源采样率 / 48000
@@ -32,12 +31,6 @@ namespace PhoneMic
 
         /// <summary>每 10ms 触发一次，参数为 960 字节的 PCM</summary>
         public event Action<byte[], int> FrameReady;
-
-        /// <summary>源设备格式，写日志用</summary>
-        public string SourceFormat { get; private set; }
-
-        /// <summary>已经发出多少帧</summary>
-        public long FramesSent { get { return _framesSent; } }
 
         public void Start()
         {
@@ -62,9 +55,6 @@ namespace PhoneMic
 
             _cap = cap;
             var f = cap.WaveFormat;
-            SourceFormat = f.SampleRate + "Hz " + f.Channels + "ch " + f.BitsPerSample + "bit " +
-                           (f.Encoding == WaveFormatEncoding.IeeeFloat ? "float" : f.Encoding.ToString());
-
             _ratio = (double)f.SampleRate / Proto.SampleRate;
             _acc = 0;
             _hasLast = false;
@@ -153,7 +143,6 @@ namespace PhoneMic
             {
                 var h = FrameReady;
                 if (h != null) h(_frame, _frame.Length);
-                _framesSent++;
                 _frameFill = 0;
             }
         }

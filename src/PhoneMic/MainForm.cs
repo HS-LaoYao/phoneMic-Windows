@@ -45,8 +45,6 @@ namespace PhoneMic
         private long _lastAudioTicks;
         private long _pttDownTicks;      // 本次「开始说话」的时刻
         private long _lastDiscoverLog;   // 上一次记录「手机正在查找」的时间
-        private long _lastTapFrames;     // 模式③：上次统计时已发送的帧数
-        private long _lastTapLogTicks;
         private int _silentTicks;
 
         private readonly List<string> _logBuf = new List<string>();
@@ -122,7 +120,7 @@ namespace PhoneMic
             int w = W;                       // 设计宽度，卡片/按钮内部会按 DPI 换算
 
             Controls.Add(UiTheme.MakeLabel("phoneMic", 24, 16, 300, 40, 18f, UiTheme.Text));
-            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v1.0.1", 26, 58, 340, 24, 10f, UiTheme.Sub));
+            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v1.0.2", 26, 58, 340, 24, 10f, UiTheme.Sub));
 
             _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 108, 24, 108, 38);
             _btnSettings.Click += delegate
@@ -450,7 +448,6 @@ namespace PhoneMic
                     if (r != null) r.SendAudioToPeer(pcm, len);
                 };
                 _tap.StartFromCapture(captureForTap);
-                Log("模式③读取的声卡格式：" + _tap.SourceFormat + "（程序会自动转成 48kHz 单声道）");
 
                 if (dual)
                 {
@@ -474,8 +471,6 @@ namespace PhoneMic
         private void StopRouteExtras()
         {
             if (_tap != null) { _tap.Dispose(); _tap = null; }
-            _lastTapFrames = 0;
-            _lastTapLogTicks = 0;
             if (_monitor != null) { _monitor.Dispose(); _monitor = null; }
 
             _micSuspended = false;
@@ -719,12 +714,9 @@ namespace PhoneMic
                 bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
                 if (hasKeys && !KeyInjector.IsHeld && !_micSuspended)
                 {
-                    bool ok;
-                    lock (_keyLock) ok = KeyInjector.Press(_cfg.Keys);
+                    lock (_keyLock) KeyInjector.Press(_cfg.Keys);
                     _pttDownTicks = Stopwatch.GetTimestamp();
                     _lastAudioTicks = _pttDownTicks;
-                    string desc = KeyInjector.Describe(_cfg.Keys);
-                    Ui(() => Log(ok ? "按下（由声音触发）：" + desc : "按键注入被拒绝：" + desc));
                 }
                 Ui(() => SetTalking(true));
             }
@@ -759,9 +751,7 @@ namespace PhoneMic
             {
                 if (ok)
                 {
-                    string desc = KeyInjector.Describe(_cfg.Keys);
-                    bool confirmed = KeyInjector.IsKeyDown(_cfg.Keys[_cfg.Keys.Length - 1]);
-                    Ui(() => Log("按下：" + desc + (confirmed ? "（系统已确认按住）" : "（系统没认，可能被权限拦截）")));
+                    Ui(() => Log("按下：" + KeyInjector.Describe(_cfg.Keys)));
                 }
                 else
                 {
@@ -870,31 +860,6 @@ namespace PhoneMic
             // 有些程序就靠这个判断「还按着」。SendInput 只发一次，它们会以为松开了。
             bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
             if (_talking && hasKeys && KeyInjector.IsHeld) KeyInjector.Repeat();
-
-            // 模式③：每 5 秒报一次实际抓到的声音量，方便判断「到底有没有抓到电脑的声音」
-            if (_mode == 3 && _tap != null)
-            {
-                long nowT = Stopwatch.GetTimestamp();
-                if (nowT - _lastTapLogTicks > Stopwatch.Frequency * 5)
-                {
-                    _lastTapLogTicks = nowT;
-                    long total = _tap.FramesSent;
-                    long delta = total - _lastTapFrames;
-                    _lastTapFrames = total;
-                    Log("模式③：过去 5 秒抓到 " + delta + " 帧（约 " + (delta / 5) + " 帧/秒，正常应接近 100）");
-                }
-            }
-
-            // 实时诊断：前台是哪个程序、键到底按下没有。
-            // 长按的时候瞄一眼就知道问题卡在哪一环。
-            if (_lblDetail != null)
-            {
-                string fg = KeyInjector.ForegroundProcessName();
-                string key = hasKeys
-                    ? (KeyInjector.IsHeld ? "按键 ✓ 已按住" : "按键 未按下")
-                    : "未设置按键";
-                _lblDetail.Text = "前台：" + (string.IsNullOrEmpty(fg) ? "?" : fg) + "　" + key;
-            }
 
             // 2 秒没收到音频 → 认为已经停止说话（兼容 PTT_UP 丢包）。
             // 参照点取「按下时刻」和「最后一帧音频」里较晚的那个，
