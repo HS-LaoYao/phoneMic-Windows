@@ -14,7 +14,7 @@ namespace PhoneMic
     /// </summary>
     internal sealed class LoopbackSender : IDisposable
     {
-        private WasapiLoopbackCapture _cap;
+        private IWaveIn _cap;
         private ISampleProvider _chain;
         private Thread _thread;
         private volatile bool _running;
@@ -22,11 +22,22 @@ namespace PhoneMic
         /// <summary>每 10ms 触发一次，参数为 960 字节的 PCM</summary>
         public event Action<byte[], int> FrameReady;
 
-        public void Start()
+        /// <summary>抓系统正在播放的声音（跟随默认播放设备）</summary>
+        public void Start() { StartWith(new WasapiLoopbackCapture()); }
+
+        /// <summary>直接读某个录音设备（模式③：读虚拟声卡的 Output 端）</summary>
+        public void StartFromCapture(string captureDeviceId)
+        {
+            if (string.IsNullOrEmpty(captureDeviceId)) throw new ArgumentNullException("captureDeviceId");
+            var dev = new MMDeviceEnumerator().GetDevice(captureDeviceId);
+            StartWith(new WasapiCapture(dev));
+        }
+
+        private void StartWith(IWaveIn cap)
         {
             if (_running) return;
 
-            _cap = new WasapiLoopbackCapture();          // 跟随系统默认播放设备
+            _cap = cap;
             _cap.StartRecording();
 
             // 转单声道 → 需要时重采样到 48k

@@ -23,9 +23,11 @@ namespace PhoneMic
 
         private UdpReceiver _rx;
         private AudioOutput _audio;          // 手机声音 → 虚拟声卡（给微信/QQ）
-        private AudioOutput _monitor;        // 手机声音 → 扬声器（模式②，自己听）
-        private LoopbackSender _loop;        // 系统声音 → 手机（模式③）
-        private bool _weMutedPc;
+        private AudioOutput _monitor;        // 手机声音 → 扬声器（模式②：监听）
+        private LoopbackSender _tap;         // 电脑声音 → 手机（模式③）
+        private string _prevRenderId;        // 模式③前，系统原来的默认播放设备
+        private bool _renderMoved;           // 是否是我们把默认播放改掉的
+        private bool _micSuspended;          // 模式③单线时暂停上行，避免回声
         private int _mode;
         private Button[] _modeBtns;
         private KeyCapture _cap;
@@ -117,7 +119,7 @@ namespace PhoneMic
             int w = W;                       // 设计宽度，卡片/按钮内部会按 DPI 换算
 
             Controls.Add(UiTheme.MakeLabel("phoneMic", 24, 16, 300, 40, 18f, UiTheme.Text));
-            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风", 26, 58, 320, 24, 10f, UiTheme.Sub));
+            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v1.0.1", 26, 58, 340, 24, 10f, UiTheme.Sub));
 
             _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 108, 24, 108, 38);
             _btnSettings.Click += delegate
@@ -158,7 +160,7 @@ namespace PhoneMic
             c1.Controls.Add(_lblMeter);
 
             // ---------- 使用模式（三选一）----------
-            string[] modeNames = { "① 只当麦克风", "② 麦克风 + 监听", "③ 手机当耳机" };
+            string[] modeNames = { "① 只当麦克风", "② 麦克风 + 监听", "③ 手机当音响" };
             int bw = (w - 48 - 20) / 3;
             _modeBtns = new Button[3];
             for (int i = 0; i < 3; i++)
@@ -175,7 +177,7 @@ namespace PhoneMic
             // ---------- 联动按键 ----------
             var c2 = UiTheme.MakeCard(this, 24, 416, w - 48, 108, "说话时同时按住的键（不映射就留空）");
 
-            _lblKey = UiTheme.MakeLabel("（不映射）", 22, 50, w - 48 - 22 - 240, 38, 15f, UiTheme.Sub);
+            _lblKey = UiTheme.MakeLabel("（不映射）", 22, 50, w - 48 - 22 - 330, 38, 15f, UiTheme.Sub);
             _lblKey.Font = UiTheme.Font(15f, FontStyle.Bold);
             c2.Controls.Add(_lblKey);
 
@@ -330,9 +332,9 @@ namespace PhoneMic
         {
             switch (m)
             {
-                case 2: return "② 麦克风 + 监听（手机声音同时在扬声器放）";
-                case 3: return "③ 手机当耳机（电脑声音送到手机）";
-                default: return "① 只当麦克风（扬声器不动）";
+                case 2: return "② 麦克风 + 监听：手机说话，音响也放出来";
+                case 3: return "③ 手机当音响：电脑声音全从手机出，音响不出声";
+                default: return "① 只当麦克风：电脑声音照常从音响出";
             }
         }
 
@@ -418,15 +420,121 @@ namespace PhoneMic
             if (m != null) m.Volume = vol;
         }
 
+        /// <summary>
+        /// 按当前模式挂上附加音频通道。
+        ///
+        /// ① 只当麦克风：什么都不做 —— 手机声音只进虚拟声卡，电脑音响完全不受影响。
+        /// ② 麦克风+监听：再把同一份声音播到扬声器，自己听得到。
+        /// ③ 手机当音响：把系统默认播放设备改到虚拟声卡（音响从此不出声），
+        ///    再读虚拟声卡的 Output 端发给手机 —— 电脑声音就全从手机出来了。
+        /// </summary>
+        private void StartRouteExtras()
+        {
+            if (_mode == 2) StartMonitor();
+            if (_mode == 3) StartHeadset();
+        }
+
+        private void StartMonitor()
+        {
+            try
+            {
+                _monitor = new AudioOutput();
+                _monitor.Volume = Math.Max(0f, Math.Min(1f, _cfg.MonitorVolume / 100f));
+                _monitor.Start(AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Multimedia));
+                Log("监听已开启（音量 " + _cfg.MonitorVolume + "%）：手机说话会从音响放出来");
+            }
+            catch (Exception ex)
+            {
+                _monitor = null;
+                Log("监听通道启动失败：" + ex.Message);
+            }
+        }
+
+        private void StartHeadset()
+        {
+            try
+            {
+                // 有 A+B 两条虚拟线就完美：A 线走麦克风，B 线走电脑声音，互不干扰
+                string capA = AudioOutput.FindCaptureId("CABLE-A");
+                string capB = AudioOutput.FindCaptureId("CABLE-B");
+                bool dual = (capA != null && capB != null);
+
+                string renderForPc;      // 把系统播放改到这里
+                string captureForTap;    // 我们从这里读电脑声音
+
+                if (dual)
+                {
+                    renderForPc = AudioOutput.FindRenderId("CABLE-B");
+                    captureForTap = capB;
+                }
+                else
+                {
+                    renderForPc = AudioOutput.FindRenderId("CABLE");
+                    captureForTap = AudioOutput.FindCaptureId("CABLE");
+                }
+
+                if (string.IsNullOrEmpty(renderForPc) || string.IsNullOrEmpty(captureForTap))
+                {
+                    Log("没找到虚拟声卡，模式③不可用");
+                    MessageBox.Show(this,
+                        "模式③需要一个虚拟声卡才能把电脑声音接到手机。
+请先在设置里安装虚拟声卡。",
+                        "手机当音响", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                _prevRenderId = AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Multimedia);
+                AudioDefault.SetDefault(renderForPc, NAudio.CoreAudioApi.Role.Console);
+                AudioDefault.SetDefault(renderForPc, NAudio.CoreAudioApi.Role.Multimedia);
+                AudioDefault.SetDefault(renderForPc, NAudio.CoreAudioApi.Role.Communications);
+                _renderMoved = true;
+
+                _tap = new LoopbackSender();
+                _tap.FrameReady += delegate(byte[] pcm, int len)
+                {
+                    var r = _rx;
+                    if (r != null) r.SendAudioToPeer(pcm, len);
+                };
+                _tap.StartFromCapture(captureForTap);
+
+                if (dual)
+                {
+                    Log("模式③（双线）：电脑声音 → 手机；手机仍然可以当麦克风");
+                }
+                else
+                {
+                    // 只有一条虚拟线时，它既要送电脑声音、又要当微信麦克风，会互相污染。
+                    // 这里优先保证「电脑声音只从手机出」，暂时停掉上行。
+                    _micSuspended = true;
+                    Log("模式③（单线）：电脑声音已从音响改道到手机；此模式下手机不能同时当麦克风");
+                }
+            }
+            catch (Exception ex)
+            {
+                _tap = null;
+                Log("模式③启动失败：" + ex.Message);
+            }
+        }
+
         private void StopRouteExtras()
         {
-            if (_loop != null) { _loop.Dispose(); _loop = null; }
+            if (_tap != null) { _tap.Dispose(); _tap = null; }
             if (_monitor != null) { _monitor.Dispose(); _monitor = null; }
 
-            if (_weMutedPc)                     // 只还原我们自己静音的
+            _micSuspended = false;
+
+            if (_renderMoved && !string.IsNullOrEmpty(_prevRenderId))
             {
-                AudioOutput.SetSystemMute(false);
-                _weMutedPc = false;
+                try
+                {
+                    AudioDefault.SetDefault(_prevRenderId, NAudio.CoreAudioApi.Role.Console);
+                    AudioDefault.SetDefault(_prevRenderId, NAudio.CoreAudioApi.Role.Multimedia);
+                    AudioDefault.SetDefault(_prevRenderId, NAudio.CoreAudioApi.Role.Communications);
+                    Log("已把默认播放设备恢复成原来的音响");
+                }
+                catch { }
+                _renderMoved = false;
+                _prevRenderId = null;
             }
         }
 
@@ -628,7 +736,7 @@ namespace PhoneMic
         {
             int count = len - Proto.AudioHeader;
             var a = _audio;
-            if (a != null) a.AddMonoPcm(buf, Proto.AudioHeader, count);
+            if (a != null && !_micSuspended) a.AddMonoPcm(buf, Proto.AudioHeader, count);
 
             var mon = _monitor;                       // 模式②：同一份声音再放一遍到扬声器
             if (mon != null) mon.AddMonoPcm(buf, Proto.AudioHeader, count);
@@ -766,7 +874,11 @@ namespace PhoneMic
 
             if (on)
             {
-                SetStatus("● 正在说话 · 录音中", UiTheme.Red, "声音正在送往虚拟声卡");
+                bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
+                string detail = hasKeys
+                    ? "声音送往虚拟声卡 · 正按住 " + KeyInjector.Describe(_cfg.Keys)
+                    : "声音送往虚拟声卡";
+                SetStatus("● 正在说话 · 录音中", UiTheme.Red, detail);
                 if (_wave != null) _wave.Reset();
             }
             else if (_connected) SetStatus("已连接 · 待命", UiTheme.Green, "手机：" + (_rx != null ? _rx.PeerIp : ""));

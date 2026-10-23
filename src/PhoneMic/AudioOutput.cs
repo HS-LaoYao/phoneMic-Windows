@@ -200,6 +200,32 @@ namespace PhoneMic
             catch { }
         }
 
+        /// <summary>按名字片段找播放设备 ID（例如 "CABLE" / "CABLE-B"）</summary>
+        public static string FindRenderId(string keyword)
+        {
+            try
+            {
+                foreach (var d in ListDevices())
+                    if (d.Name != null && d.Name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return d.Id;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>按名字片段找录音设备 ID</summary>
+        public static string FindCaptureId(string keyword)
+        {
+            try
+            {
+                foreach (var d in ListCaptureDevices())
+                    if (d.Name != null && d.Name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return d.Id;
+            }
+            catch { }
+            return null;
+        }
+
         /// <summary>系统默认播放（扬声器）设备的名字 —— 用来检查是不是被改成了虚拟声卡</summary>
         public static string GetDefaultRenderName(Role role)
         {
