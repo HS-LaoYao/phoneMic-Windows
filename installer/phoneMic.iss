@@ -7,7 +7,7 @@
 ;       再启动它**自己的**安装程序（不是我们静默装），符合其许可要求。
 
 #define MyAppName "phoneMic"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppExeName "PhoneMic.exe"
 #define MyAppPublisher "phoneMic"
 
