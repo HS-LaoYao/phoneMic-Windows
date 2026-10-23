@@ -45,6 +45,8 @@ namespace PhoneMic
         private long _lastAudioTicks;
         private long _pttDownTicks;      // 本次「开始说话」的时刻
         private long _lastDiscoverLog;   // 上一次记录「手机正在查找」的时间
+        private long _lastTapFrames;     // 模式③：上次统计时已发送的帧数
+        private long _lastTapLogTicks;
         private int _silentTicks;
 
         private readonly List<string> _logBuf = new List<string>();
@@ -448,6 +450,7 @@ namespace PhoneMic
                     if (r != null) r.SendAudioToPeer(pcm, len);
                 };
                 _tap.StartFromCapture(captureForTap);
+                Log("模式③读取的声卡格式：" + _tap.SourceFormat + "（程序会自动转成 48kHz 单声道）");
 
                 if (dual)
                 {
@@ -471,6 +474,8 @@ namespace PhoneMic
         private void StopRouteExtras()
         {
             if (_tap != null) { _tap.Dispose(); _tap = null; }
+            _lastTapFrames = 0;
+            _lastTapLogTicks = 0;
             if (_monitor != null) { _monitor.Dispose(); _monitor = null; }
 
             _micSuspended = false;
@@ -865,6 +870,20 @@ namespace PhoneMic
             // 有些程序就靠这个判断「还按着」。SendInput 只发一次，它们会以为松开了。
             bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
             if (_talking && hasKeys && KeyInjector.IsHeld) KeyInjector.Repeat();
+
+            // 模式③：每 5 秒报一次实际抓到的声音量，方便判断「到底有没有抓到电脑的声音」
+            if (_mode == 3 && _tap != null)
+            {
+                long nowT = Stopwatch.GetTimestamp();
+                if (nowT - _lastTapLogTicks > Stopwatch.Frequency * 5)
+                {
+                    _lastTapLogTicks = nowT;
+                    long total = _tap.FramesSent;
+                    long delta = total - _lastTapFrames;
+                    _lastTapFrames = total;
+                    Log("模式③：过去 5 秒抓到 " + delta + " 帧（约 " + (delta / 5) + " 帧/秒，正常应接近 100）");
+                }
+            }
 
             // 实时诊断：前台是哪个程序、键到底按下没有。
             // 长按的时候瞄一眼就知道问题卡在哪一环。

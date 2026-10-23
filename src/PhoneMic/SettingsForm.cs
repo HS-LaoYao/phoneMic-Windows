@@ -391,6 +391,15 @@ namespace PhoneMic
             }
 
             bool wrong = name.IndexOf("CABLE", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // 模式③ 本来就要把默认播放改到虚拟声卡，这时候不能报错
+            if (wrong && _cfg.RouteMode == 3)
+            {
+                _lblRender.Text = "默认播放设备：" + name + "（模式③正常现象，停止后自动恢复）";
+                _lblRender.ForeColor = UiTheme.Sub;
+                return;
+            }
+
             if (wrong)
             {
                 _lblRender.Text = "⚠ 系统默认播放设备是「" + name + "」→ 放歌会没声音，请改回扬声器";
