@@ -1,4 +1,4 @@
-# phoneMic · Windows 端 v1.0.4
+# phoneMic · Windows 端 v1.0.5
 
 把手机当电脑麦克风（和耳机）。配套手机端见 `phoneMic-Android`。
 

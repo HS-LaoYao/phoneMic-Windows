@@ -65,10 +65,39 @@ namespace PhoneMic
 
         private static void ShowError(Exception ex)
         {
+            string detail = ex == null ? "未知错误" : (ex.Message + "\n" + ex.StackTrace);
+
+            // 先落盘：弹出框可能被用户顺手点掉，但日志留着以后能查
+            LogCrash(detail);
+
             try
             {
-                MessageBox.Show("程序出错了：\n\n" + (ex != null ? ex.Message : "未知错误"),
+                bool fatal = ex != null && ex is StackOverflowException;
+                MessageBox.Show(
+                    "程序出错了：\n\n" + (ex != null ? ex.Message : "未知错误") +
+                    "\n\n详细信息已写入：\n" + CrashLogPath(),
                     "phoneMic", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (fatal) Environment.Exit(1);
+            }
+            catch { }
+        }
+
+        private static string CrashLogPath()
+        {
+            return System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "phoneMic", "crash.log");
+        }
+
+        private static void LogCrash(string detail)
+        {
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(CrashLogPath());
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.AppendAllText(CrashLogPath(),
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + detail + "\n\n",
+                    System.Text.Encoding.UTF8);
             }
             catch { }
         }

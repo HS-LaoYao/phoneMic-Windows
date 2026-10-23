@@ -295,18 +295,27 @@ namespace PhoneMic
 
         private static bool Send(int vk, bool down)
         {
-            int baseVk;
-            bool ext;
-            ToBaseKey(vk, out baseVk, out ext);
+            // 这里会碰到别的程序的窗口 / 输入线程，任何一步出岔子都只能算「这次没投成」，
+            // 绝不能把异常抛出去 —— 调用方常在收包线程上，一抛就是整个程序退出。
+            try
+            {
+                int baseVk;
+                bool ext;
+                ToBaseKey(vk, out baseVk, out ext);
 
-            // 选了「作用窗口」就按选定的方式投递
-            IntPtr target = ResolveTarget();
-            if (target != IntPtr.Zero) return DeliverTo(target, baseVk, ext, down);
+                // 选了「作用窗口」就按选定的方式投递
+                IntPtr target = ResolveTarget();
+                if (target != IntPtr.Zero) return DeliverTo(target, baseVk, ext, down);
 
-            if (Mode == InjectMode.Message)
-                return PostTo(GetForegroundWindow(), baseVk, ext, down);
+                if (Mode == InjectMode.Message)
+                    return PostTo(GetForegroundWindow(), baseVk, ext, down);
 
-            return SendInputNormal(baseVk, ext, down);
+                return SendInputNormal(baseVk, ext, down);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>按当前投递方式把一次按下 / 抬起送出去</summary>

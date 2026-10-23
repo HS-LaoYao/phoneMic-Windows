@@ -68,6 +68,7 @@ namespace PhoneMic
         public static readonly Color Field = Color.FromArgb(0x0F, 0x14, 0x19);
         public static readonly Color Text = Color.FromArgb(0xE6, 0xED, 0xF3);
         public static readonly Color Sub = Color.FromArgb(0x8B, 0x98, 0xA5);
+        public static readonly Color Dim = Color.FromArgb(0x54, 0x5E, 0x69);   // 置灰时用的更暗一档
         public static readonly Color Line = Color.FromArgb(0x2C, 0x35, 0x40);
         public static readonly Color Blue = Color.FromArgb(0x3F, 0xA7, 0xFF);
         public static readonly Color Green = Color.FromArgb(0x3F, 0xB9, 0x50);

@@ -66,7 +66,9 @@ namespace PhoneMic
         private static extern bool ShowWindow(IntPtr h, int cmd);
         [DllImport("user32.dll")]
         private static extern bool AttachThreadInput(uint a, uint b, bool attach);
-        [DllImport("user32.dll")]
+        // 注意：GetCurrentThreadId 在 kernel32 里，不在 user32。
+        // 写错 DLL 名会抛 EntryPointNotFoundException —— 一旦发生在网络线程上就是闪退。
+        [DllImport("kernel32.dll")]
         private static extern uint GetCurrentThreadId();
         [DllImport("user32.dll")]
         private static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
@@ -171,27 +173,47 @@ namespace PhoneMic
         /// </summary>
         public static bool Activate(IntPtr h)
         {
-            if (h == IntPtr.Zero || !IsWindow(h)) return false;
-            if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
-            else ShowWindow(h, SW_SHOW);
+            // 切前台这条路会碰别的程序的输入线程，风险比一般调用高。
+            // 这里整段兜住：切不过去只是功能没生效，绝不能把本程序带崩。
+            try
+            {
+                if (h == IntPtr.Zero || !IsWindow(h)) return false;
+                if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
+                else ShowWindow(h, SW_SHOW);
 
-            IntPtr fg = GetForegroundWindow();
-            if (fg == h) return true;
+                IntPtr fg = GetForegroundWindow();
+                if (fg == h) return true;
 
-            uint pid;
-            uint fgTid = GetWindowThreadProcessId(fg, out pid);
-            uint myTid = GetCurrentThreadId();
-            bool attached = false;
-            if (fgTid != 0 && fgTid != myTid) attached = AttachThreadInput(myTid, fgTid, true);
+                // 先试最温和的一条：模拟按一下 Alt 解前台锁，再切。
+                // 成功的概率已经够高，而且不会去动别人的输入线程。
+                keybd_event(VK_MENU, 0, 0, IntPtr.Zero);
+                keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, IntPtr.Zero);
 
-            // 解前台锁（AutoHotkey 的经典做法）
-            keybd_event(VK_MENU, 0, 0, IntPtr.Zero);
-            keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, IntPtr.Zero);
+                if (SetForegroundWindow(h) && GetForegroundWindow() == h) return true;
 
-            bool ok = SetForegroundWindow(h);
-            if (attached) AttachThreadInput(myTid, fgTid, false);
+                // 不行再挂输入线程（老办法），这也是唯一可能影响对方线程的一步，
+                // 所以放在最后，且无论中间出什么事都要记得解开。
+                uint pid;
+                uint fgTid = GetWindowThreadProcessId(fg, out pid);
+                uint myTid = GetCurrentThreadId();
+                if (fgTid == 0 || fgTid == myTid) return false;
 
-            return ok && GetForegroundWindow() == h;
+                bool attached = false;
+                try
+                {
+                    attached = AttachThreadInput(myTid, fgTid, true);
+                    bool ok = SetForegroundWindow(h);
+                    return ok && GetForegroundWindow() == h;
+                }
+                finally
+                {
+                    if (attached) AttachThreadInput(myTid, fgTid, false);
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool Same(string a, string b)

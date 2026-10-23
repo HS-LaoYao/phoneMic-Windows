@@ -54,6 +54,9 @@ namespace PhoneMic
         private Label _lblStatus, _lblDetail, _lblMeter, _lblKey, _lblBar;
         private Waveform _wave;
         private ComboBox _cboTarget, _cboDeliver;
+        private Label _lblTarget, _lblDeliver, _lblLinkHint;
+        private Button _btnRefreshTarget;
+        private bool _linkSync;      // 正在同步联动控件的启用状态，别把这次改动当成用户操作
         private List<WinTarget> _targets = new List<WinTarget>();
         private Button _btnRecord, _btnClear, _btnStart, _btnFixMic, _btnSettings, _btnMore, _btnTestKey;
 
@@ -214,7 +217,8 @@ namespace PhoneMic
             c2.Controls.Add(_btnClear);
 
             // 第 2 行：发给哪个程序
-            c2.Controls.Add(UiTheme.MakeLabel("发给", lx, 80, lw, 26, 9.5f, UiTheme.Sub));
+            _lblTarget = UiTheme.MakeLabel("发给", lx, 80, lw, 26, 9.5f, UiTheme.Sub);
+            c2.Controls.Add(_lblTarget);
             _cboTarget = new ComboBox
             {
                 Location = new Point(UiTheme.S(vx), UiTheme.S(78)),
@@ -227,13 +231,14 @@ namespace PhoneMic
             _cboTarget.SelectedIndexChanged += OnTargetChanged;
             c2.Controls.Add(_cboTarget);
 
-            var btnRefreshTarget = UiTheme.MakeButton("刷新", rightEdge - btnW, 77, btnW, 32);
-            btnRefreshTarget.Font = UiTheme.Font(9.5f);
-            btnRefreshTarget.Click += delegate { LoadTargets(); };
-            c2.Controls.Add(btnRefreshTarget);
+            _btnRefreshTarget = UiTheme.MakeButton("刷新", rightEdge - btnW, 77, btnW, 32);
+            _btnRefreshTarget.Font = UiTheme.Font(9.5f);
+            _btnRefreshTarget.Click += delegate { LoadTargets(); };
+            c2.Controls.Add(_btnRefreshTarget);
 
             // 第 3 行：怎么投递 + 测试
-            c2.Controls.Add(UiTheme.MakeLabel("投递方式", lx, 120, lw, 26, 9.5f, UiTheme.Sub));
+            _lblDeliver = UiTheme.MakeLabel("投递方式", lx, 120, lw, 26, 9.5f, UiTheme.Sub);
+            c2.Controls.Add(_lblDeliver);
             _cboDeliver = new ComboBox
             {
                 Location = new Point(UiTheme.S(vx), UiTheme.S(118)),
@@ -256,9 +261,10 @@ namespace PhoneMic
             _btnTestKey.Click += delegate { TestKey(); };
             c2.Controls.Add(_btnTestKey);
 
-            c2.Controls.Add(UiTheme.MakeLabel(
+            _lblLinkHint = UiTheme.MakeLabel(
                 "默认＝发给当前前台窗口；指定程序后按键直接投给它，不抢焦点",
-                vx, 154, rightEdge - vx, 20, 9f, UiTheme.Sub));
+                vx, 154, rightEdge - vx, 20, 9f, UiTheme.Sub);
+            c2.Controls.Add(_lblLinkHint);
 
             // ---------- 麦克风提示条（始终占位，避免布局跳动）----------
             _bar = new Panel
@@ -527,30 +533,34 @@ namespace PhoneMic
             _cboTarget.SelectedIndex = sel;
             _cboTarget.SelectedIndexChanged += OnTargetChanged;
 
+            // 上次选的程序可能已经关掉了，这时会退回「默认」—— 顺带把联动状态刷新一遍
+            UpdateKeyLinkage();
         }
 
         private void OnTargetChanged(object sender, EventArgs e)
         {
+            if (_linkSync) return;                 // 程序自己同步状态，不是用户操作
             int i = _cboTarget.SelectedIndex;
             if (i <= 0)
             {
                 _cfg.TargetExe = "";
                 _cfg.TargetTitle = "";
-                Log("作用窗口：跟随当前前台窗口");
+                Log("按键发给：跟随当前前台窗口");
             }
             else
             {
                 var t = _targets[i - 1];
                 _cfg.TargetExe = t.Exe;
                 _cfg.TargetTitle = t.Title;
-                Log("作用窗口：" + t.Exe + "（按键直接投给它，不切前台）");
+                Log("按键发给：" + t.Exe);
             }
-            ApplyTarget();
+            UpdateKeyLinkage();
             _cfg.Save();
         }
 
         private void OnDeliverChanged(object sender, EventArgs e)
         {
+            if (_linkSync) return;
             _cfg.DeliveryMode = _cboDeliver.SelectedIndex;
             ApplyTarget();
             _cfg.Save();
@@ -1245,6 +1255,66 @@ namespace PhoneMic
             bool has = _cfg.Keys != null && _cfg.Keys.Length > 0;
             _lblKey.Text = KeyInjector.Describe(_cfg.Keys);
             _lblKey.ForeColor = has ? UiTheme.Text : UiTheme.Sub;
+            UpdateKeyLinkage();
+        }
+
+        /// <summary>
+        /// 按键联动这一块的三行是有依赖关系的，用「置灰」把用不上的收起来，免得看着像都能选：
+        ///   没设快捷键   → 「发给谁」「投递方式」都没意义，清空并整块置灰
+        ///   发给＝默认   → 按键走系统输入流，投递方式根本不参与，清空并置灰
+        ///   发给＝某程序 → 三行全可用
+        /// </summary>
+        private void UpdateKeyLinkage()
+        {
+            if (_cboTarget == null || _cboDeliver == null) return;
+
+            bool changed = false;
+            _linkSync = true;
+            try
+            {
+                bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
+
+                if (!hasKeys)
+                {
+                    if (!string.IsNullOrEmpty(_cfg.TargetExe)) changed = true;
+                    if (_cfg.DeliveryMode != 0) changed = true;
+                    _cfg.TargetExe = "";
+                    _cfg.TargetTitle = "";
+                    _cfg.DeliveryMode = 0;
+                    if (_cboTarget.Items.Count > 0) _cboTarget.SelectedIndex = 0;
+                    _cboDeliver.SelectedIndex = 0;
+                }
+                else if (string.IsNullOrEmpty(_cfg.TargetExe) && _cfg.DeliveryMode != 0)
+                {
+                    _cfg.DeliveryMode = 0;
+                    _cboDeliver.SelectedIndex = 0;
+                    changed = true;
+                }
+            }
+            finally { _linkSync = false; }
+            if (changed) _cfg.Save();
+
+            bool hasKeys2 = _cfg.Keys != null && _cfg.Keys.Length > 0;
+            bool hasTarget = hasKeys2 && !string.IsNullOrEmpty(_cfg.TargetExe);
+
+            _cboTarget.Enabled = hasKeys2;
+            _btnRefreshTarget.Enabled = hasKeys2;
+            _cboDeliver.Enabled = hasTarget;
+            if (_btnTestKey != null) _btnTestKey.Enabled = hasKeys2;
+            if (_lblTarget != null) _lblTarget.ForeColor = hasKeys2 ? UiTheme.Sub : UiTheme.Dim;
+            if (_lblDeliver != null) _lblDeliver.ForeColor = hasTarget ? UiTheme.Sub : UiTheme.Dim;
+
+            if (_lblLinkHint != null)
+            {
+                if (!hasKeys2)
+                    _lblLinkHint.Text = "先用上面的「重新录制」设一个快捷键，这里才能选";
+                else if (!hasTarget)
+                    _lblLinkHint.Text = "默认＝发给当前前台窗口；选定某个程序后，这里才能挑投递方式";
+                else
+                    _lblLinkHint.Text = "按键直接投给选定的程序，不抢焦点";
+            }
+
+            ApplyTarget();
         }
 
         // ==================== 日志 ====================
