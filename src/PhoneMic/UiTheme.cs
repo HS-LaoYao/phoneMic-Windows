@@ -28,6 +28,37 @@ namespace PhoneMic
 
         public static int S(int v) { return (int)Math.Round(v * _scale); }
 
+        // ===== 深色标题栏 =====
+        //
+        // 不做这一步，Win11 会按系统「强调色」给标题栏上色，两个窗口还可能不一样
+        // （主窗口深色、设置窗口橙色）。统一刷成和界面同色，看起来才是一套东西。
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);
+
+        public static void DarkTitle(Form f)
+        {
+            try
+            {
+                IntPtr h = f.Handle;                 // 强制建句柄
+                int on = 1;
+                // 20 是 Win10 1903+ 的 DWMWA_USE_IMMERSIVE_DARK_MODE，更老的是 19
+                if (DwmSetWindowAttribute(h, 20, ref on, sizeof(int)) != 0)
+                    DwmSetWindowAttribute(h, 19, ref on, sizeof(int));
+
+                // Win11：直接把标题栏刷成界面底色（失败就算了，不影响使用）
+                int cap = ToColorRef(Bg);
+                DwmSetWindowAttribute(h, 35, ref cap, sizeof(int));   // DWMWA_CAPTION_COLOR
+                int txt = ToColorRef(Text);
+                DwmSetWindowAttribute(h, 36, ref txt, sizeof(int));   // DWMWA_TEXT_COLOR
+            }
+            catch { }
+        }
+
+        private static int ToColorRef(Color c)
+        {
+            return c.R | (c.G << 8) | (c.B << 16);     // COLORREF: 0x00BBGGRR
+        }
+
         public static float S(float v) { return v * _scale; }
 
         public static float Scale { get { return _scale; } }

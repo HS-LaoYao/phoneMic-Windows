@@ -17,7 +17,7 @@ namespace PhoneMic
     {
         // 设计尺寸（96 DPI 下的逻辑单位）。实际像素由 UiTheme.S() 按 DPI 换算。
         private const int W = 660;
-        private const int H = 930;
+        private const int H = 824;
 
         private readonly Config _cfg;
 
@@ -51,11 +51,11 @@ namespace PhoneMic
 
         // ===== 控件 =====
         private Panel _dot, _bar;
-        private Label _lblStatus, _lblDetail, _lblMeter, _lblKey, _lblFoot, _lblBar;
+        private Label _lblStatus, _lblDetail, _lblMeter, _lblKey, _lblBar;
         private Waveform _wave;
         private ComboBox _cboTarget, _cboDeliver;
         private List<WinTarget> _targets = new List<WinTarget>();
-        private Button _btnRecord, _btnClear, _btnStart, _btnFixMic, _btnSettings;
+        private Button _btnRecord, _btnClear, _btnStart, _btnFixMic, _btnSettings, _btnMore, _btnTestKey;
 
         public MainForm()
         {
@@ -105,6 +105,7 @@ namespace PhoneMic
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            UiTheme.DarkTitle(this);
             if (_cfg.AutoStartOnLaunch) StartAll();
         }
 
@@ -126,13 +127,14 @@ namespace PhoneMic
             Controls.Add(UiTheme.MakeLabel("phoneMic", 24, 16, 300, 40, 18f, UiTheme.Text));
             Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v" + Proto.Version + "", 26, 58, 340, 24, 10f, UiTheme.Sub));
 
-            _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 108, 24, 108, 38);
-            _btnSettings.Click += delegate
-            {
-                using (var f = new SettingsForm(this, _cfg))
-                    f.ShowDialog(this);
-            };
+            _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 40 - 8 - 100, 24, 100, 38);
+            _btnSettings.Click += delegate { OpenSettings(); };
             Controls.Add(_btnSettings);
+
+            _btnMore = UiTheme.MakeButton("⋮", w - 24 - 40, 24, 40, 38);
+            _btnMore.Font = UiTheme.Font(15f, FontStyle.Bold);
+            _btnMore.Click += delegate { ShowMoreMenu(_btnMore); };
+            Controls.Add(_btnMore);
 
             // ---------- 状态 + 波形 ----------
             var c1 = UiTheme.MakeCard(this, 24, 92, w - 48, 252, "连接状态");
@@ -179,23 +181,29 @@ namespace PhoneMic
             }
             UpdateModeButtons();
 
-            // ---------- 联动按键 ----------
-            var c2 = UiTheme.MakeCard(this, 24, 416, w - 48, 108, "说话时同时按住的键（不映射就留空）");
+            // ---------- 按键联动（按什么键 → 发给谁 → 怎么发，三件事放一块）----------
+            var c2 = UiTheme.MakeCard(this, 24, 416, w - 48, 184, "按键联动");
 
-            _lblKey = UiTheme.MakeLabel("（不映射）", 22, 50, w - 48 - 22 - 330, 38, 15f, UiTheme.Sub);
+            int cw = w - 48;          // 卡片宽度
+            int lx = 20;              // 左侧标题列
+            int lw = 82;
+            int vx = lx + lw + 8;     // 右侧值列
+            int rightEdge = cw - 20;
+            int btnW = 76;
+
+            // 第 1 行：按住的键
+            c2.Controls.Add(UiTheme.MakeLabel("按住的键", lx, 40, lw, 26, 9.5f, UiTheme.Sub));
+            _lblKey = UiTheme.MakeLabel("（不映射）", vx, 34, 250, 34, 15f, UiTheme.Sub);
             _lblKey.Font = UiTheme.Font(15f, FontStyle.Bold);
             c2.Controls.Add(_lblKey);
 
-            var btnTest = UiTheme.MakeButton("测 试", w - 48 - 20 - 216 - 8 - 92, 52, 92, 36);
-            btnTest.ForeColor = UiTheme.Blue;
-            btnTest.Click += delegate { TestKey(); };
-            c2.Controls.Add(btnTest);
-
-            _btnRecord = UiTheme.MakeButton("重新录制", w - 48 - 20 - 216, 52, 104, 36);
+            _btnRecord = UiTheme.MakeButton("重新录制", rightEdge - 92 - 8 - 116, 36, 116, 32);
+            _btnRecord.Font = UiTheme.Font(9.5f);
             _btnRecord.Click += delegate { RecordKey(); };
             c2.Controls.Add(_btnRecord);
 
-            _btnClear = UiTheme.MakeButton("清除", w - 48 - 20 - 104, 52, 104, 36);
+            _btnClear = UiTheme.MakeButton("清除", rightEdge - 92, 36, 92, 32);
+            _btnClear.Font = UiTheme.Font(9.5f);
             _btnClear.Click += delegate
             {
                 _cfg.Keys = new int[0];
@@ -205,32 +213,31 @@ namespace PhoneMic
             };
             c2.Controls.Add(_btnClear);
 
-            // ---------- 作用窗口 ----------
-            var c3 = UiTheme.MakeCard(this, 24, 542, w - 48, 142, "作用窗口（按键发给哪个程序）");
-
+            // 第 2 行：发给哪个程序
+            c2.Controls.Add(UiTheme.MakeLabel("发给", lx, 80, lw, 26, 9.5f, UiTheme.Sub));
             _cboTarget = new ComboBox
             {
-                Location = new Point(UiTheme.S(20), UiTheme.S(40)),
-                Size = new Size(UiTheme.S(w - 48 - 20 - 96 - 12 - 20), UiTheme.S(30)),
+                Location = new Point(UiTheme.S(vx), UiTheme.S(78)),
+                Size = new Size(UiTheme.S(rightEdge - btnW - 8 - vx), UiTheme.S(30)),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Field,
                 ForeColor = UiTheme.Text
             };
             _cboTarget.SelectedIndexChanged += OnTargetChanged;
-            c3.Controls.Add(_cboTarget);
+            c2.Controls.Add(_cboTarget);
 
-            var btnRefreshTarget = UiTheme.MakeButton("刷新", w - 48 - 20 - 96, 39, 96, 32);
+            var btnRefreshTarget = UiTheme.MakeButton("刷新", rightEdge - btnW, 77, btnW, 32);
             btnRefreshTarget.Font = UiTheme.Font(9.5f);
             btnRefreshTarget.Click += delegate { LoadTargets(); };
-            c3.Controls.Add(btnRefreshTarget);
+            c2.Controls.Add(btnRefreshTarget);
 
-            int halfW = (w - 48 - 40 - 10) / 2;
-
+            // 第 3 行：怎么投递 + 测试
+            c2.Controls.Add(UiTheme.MakeLabel("投递方式", lx, 120, lw, 26, 9.5f, UiTheme.Sub));
             _cboDeliver = new ComboBox
             {
-                Location = new Point(UiTheme.S(20), UiTheme.S(76)),
-                Size = new Size(UiTheme.S(halfW), UiTheme.S(30)),
+                Location = new Point(UiTheme.S(vx), UiTheme.S(118)),
+                Size = new Size(UiTheme.S(rightEdge - btnW - 8 - vx), UiTheme.S(30)),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Field,
@@ -238,25 +245,25 @@ namespace PhoneMic
             };
             _cboDeliver.Items.Add("后台投递（不抢焦点）");
             _cboDeliver.Items.Add("后台投递 + 连子窗口");
-            _cboDeliver.Items.Add("切到前台再按（万能）");
+            _cboDeliver.Items.Add("切到前台再按");
             _cboDeliver.Items.Add("两条路都试");
             _cboDeliver.SelectedIndexChanged += OnDeliverChanged;
-            c3.Controls.Add(_cboDeliver);
+            c2.Controls.Add(_cboDeliver);
 
-            var btnTestTarget = UiTheme.MakeButton("测 试", 20 + halfW + 10, 75, halfW, 32);
-            btnTestTarget.Font = UiTheme.Font(9.5f);
-            btnTestTarget.ForeColor = UiTheme.Blue;
-            btnTestTarget.Click += delegate { TestKey(); };
-            c3.Controls.Add(btnTestTarget);
+            _btnTestKey = UiTheme.MakeButton("测 试", rightEdge - btnW, 117, btnW, 32);
+            _btnTestKey.Font = UiTheme.Font(9.5f);
+            _btnTestKey.ForeColor = UiTheme.Blue;
+            _btnTestKey.Click += delegate { TestKey(); };
+            c2.Controls.Add(_btnTestKey);
 
-            c3.Controls.Add(UiTheme.MakeLabel(
-                "默认＝发给当前前台窗口。选定程序后按上面的方式投递；哪个管用只能实测，先点「测试」试试",
-                20, 112, w - 48 - 40, 22, 9f, UiTheme.Sub));
+            c2.Controls.Add(UiTheme.MakeLabel(
+                "默认＝发给当前前台窗口；指定程序后按键直接投给它，不抢焦点",
+                vx, 154, rightEdge - vx, 20, 9f, UiTheme.Sub));
 
             // ---------- 麦克风提示条（始终占位，避免布局跳动）----------
             _bar = new Panel
             {
-                Location = new Point(UiTheme.S(24), UiTheme.S(700)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(616)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(92)),
                 BackColor = UiTheme.CardBg
             };
@@ -277,7 +284,7 @@ namespace PhoneMic
             _btnStart = new Button
             {
                 Text = "开 始",
-                Location = new Point(UiTheme.S(24), UiTheme.S(808)),
+                Location = new Point(UiTheme.S(24), UiTheme.S(724)),
                 Size = new Size(UiTheme.S(w - 48), UiTheme.S(64)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = UiTheme.Blue,
@@ -291,11 +298,6 @@ namespace PhoneMic
             _btnStart.Resize += delegate { UiTheme.ApplyRound(_btnStart, UiTheme.S(14)); };
             Controls.Add(_btnStart);
 
-            // ---------- 底部一行 ----------
-            _lblFoot = UiTheme.MakeLabel("点这里查看日志", 26, 884, w - 52, 22, 9f, UiTheme.Sub);
-            _lblFoot.Cursor = Cursors.Hand;
-            _lblFoot.Click += delegate { OpenSettings(); };
-            Controls.Add(_lblFoot);
         }
 
         private void BuildTray()
@@ -330,6 +332,97 @@ namespace PhoneMic
         {
             using (var f = new SettingsForm(this, _cfg))
                 f.ShowDialog(this);
+            ApplyTarget();
+            LoadTargets();
+            UpdateKeyLabel();
+        }
+
+        // ==================== 右上角「⋮」菜单：检查更新 / 关于 ====================
+
+        private void ShowMoreMenu(Control anchor)
+        {
+            var m = new ContextMenuStrip
+            {
+                BackColor = UiTheme.CardBg,
+                ForeColor = UiTheme.Text,
+                Font = UiTheme.Font(10f),
+                ShowImageMargin = false
+            };
+            m.Items.Add("检查更新", null, delegate { CheckUpdate(); });
+            m.Items.Add("关于 phoneMic", null, delegate { ShowAbout(); });
+            m.Items.Add(new ToolStripSeparator());
+            m.Items.Add("打开设置", null, delegate { OpenSettings(); });
+            m.Show(anchor, new Point(0, anchor.Height + UiTheme.S(4)));
+        }
+
+        private void ShowAbout()
+        {
+            MessageBox.Show(this,
+                "phoneMic  v" + Proto.Version + "\n\n" +
+                "把手机变成电脑的麦克风（和耳机），同一个 WiFi 下自动配对，不用输 IP。\n\n" +
+                "电脑端：.NET Framework 4.8 + NAudio，需要 VB-CABLE 虚拟声卡（安装包已附带）。\n" +
+                "手机端：Android 8.0 以上。\n\n" +
+                "源码与安装包：\n" +
+                "码云　https://gitee.com/heishanyao_admin/phoneMic-Windows\n" +
+                "GitHub　https://github.com/HS-LaoYao/phoneMic-Windows",
+                "关于 phoneMic", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void CheckUpdate()
+        {
+            var th = new System.Threading.Thread(delegate ()
+            {
+                var info = Updater.Check();
+
+                Ui(delegate
+                {
+                    if (info.Error != null)
+                    {
+                        MessageBox.Show(this, "检查更新失败：\n" + info.Error, "phoneMic",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    if (!Updater.IsNewer(info.Version, Proto.Version))
+                    {
+                        MessageBox.Show(this, "已经是最新版（v" + Proto.Version + "）", "phoneMic",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    if (string.IsNullOrEmpty(info.Url))
+                    {
+                        MessageBox.Show(this,
+                            "线上有新版本 v" + info.Version + "，但没找到安装包。\n" +
+                            "到码云的「发行版」页面手动下载吧。", "phoneMic",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    var r = MessageBox.Show(this,
+                        "发现新版本 v" + info.Version + "（当前 v" + Proto.Version + "）。\n\n" +
+                        "下载并运行安装包吗？", "phoneMic · 检查更新",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (r != DialogResult.Yes) return;
+
+                    Log("正在下载 v" + info.Version + "…");
+                    var th2 = new System.Threading.Thread(delegate ()
+                    {
+                        string err = null;
+                        try { Updater.DownloadAndRun(info.Url, info.Version); }
+                        catch (Exception ex) { err = ex.Message; }
+
+                        Ui(delegate
+                        {
+                            if (err != null)
+                                MessageBox.Show(this, "下载失败：\n" + err, "phoneMic",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        });
+                    });
+                    th2.IsBackground = true;
+                    th2.Start();
+                });
+            });
+            th.IsBackground = true;
+            th.Start();
         }
 
         /// <summary>点提示条上的按钮 → 直接打开设置页定位到麦克风那块</summary>
@@ -1178,7 +1271,6 @@ namespace PhoneMic
             try { File.AppendAllText(LogPath, line + Environment.NewLine, Encoding.UTF8); }
             catch { }
 
-            if (_lblFoot != null) _lblFoot.Text = msg;
         }
 
         internal string[] GetLogLines()

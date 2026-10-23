@@ -16,7 +16,7 @@ namespace PhoneMic
     internal sealed class SettingsForm : Form
     {
         private const int W = 660;
-        private const int H = 1098;
+        private const int H = 994;
 
         private readonly MainForm _owner;
         private readonly Config _cfg;
@@ -55,6 +55,12 @@ namespace PhoneMic
             LoadDevices();
             RefreshMicInfo();
             RefreshLog();
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            UiTheme.DarkTitle(this);
         }
 
         // ==================== 界面 ====================
@@ -194,7 +200,7 @@ namespace PhoneMic
             _btnSelfTest.Click += delegate { RunSelfTest(); };
             c3.Controls.Add(_btnSelfTest);
 
-            _lblTest = UiTheme.MakeLabel("点它，然后对着手机说话 —— 看虚拟声卡里到底有没有声音", 244, 130, w - 20 - 244, 28, 9f, UiTheme.Sub);
+            _lblTest = UiTheme.MakeLabel("点它，然后对着手机说话，看下面会不会测到电平", 244, 130, w - 20 - 244, 28, 9f, UiTheme.Sub);
             c3.Controls.Add(_lblTest);
 
             // ---------- 选项 ----------
@@ -224,7 +230,7 @@ namespace PhoneMic
             c4.Controls.Add(_chkAuto);
 
             // 注入方式：三种都试一遍，哪个能让目标软件有反应就用哪个
-            c4.Controls.Add(UiTheme.MakeLabel("按键注入方式", 20, 94, 130, 26, 9.5f, UiTheme.Sub));
+            c4.Controls.Add(UiTheme.MakeLabel("按键兼容模式", 20, 94, 130, 26, 9.5f, UiTheme.Sub));
             _cboKeyMode = new ComboBox
             {
                 Location = new Point(UiTheme.S(150), UiTheme.S(92)),
@@ -234,10 +240,10 @@ namespace PhoneMic
                 BackColor = UiTheme.Field,
                 ForeColor = UiTheme.Text
             };
-            _cboKeyMode.Items.Add("虚拟键码（默认，先试这个）");
-            _cboKeyMode.Items.Add("扫描码（游戏或者特殊程序用）");
-            _cboKeyMode.Items.Add("消息投递（屏蔽了模拟按键的程序用）");
-            _cboKeyMode.Items.Add("双路（两种一起发，最不容易漏，推荐先试这个）");
+            _cboKeyMode.Items.Add("默认（推荐）");
+            _cboKeyMode.Items.Add("扫描码（部分游戏）");
+            _cboKeyMode.Items.Add("消息投递（屏蔽模拟按键的程序）");
+            _cboKeyMode.Items.Add("双路（前面都不行再试）");
             _cboKeyMode.SelectedIndex = Math.Max(0, Math.Min(3, _cfg.KeyMode));
             _cboKeyMode.SelectedIndexChanged += delegate
             {
@@ -249,7 +255,7 @@ namespace PhoneMic
             c4.Controls.Add(_cboKeyMode);
 
             // ---------- 日志 ----------
-            var c5 = UiTheme.MakeCard(this, 24, 774, w, 200, "日志（出问题时把这里的内容发我）");
+            var c5 = UiTheme.MakeCard(this, 24, 774, w, 200, "运行日志");
             _txtLog = new TextBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(46)),
@@ -283,102 +289,6 @@ namespace PhoneMic
             btnRefreshLog.Click += delegate { RefreshLog(); };
             c5.Controls.Add(btnRefreshLog);
 
-            // ---------- 关于 / 更新 ----------
-            var c6 = UiTheme.MakeCard(this, 24, 990, w, 92, "关于 / 更新");
-
-            var btnUpdate = UiTheme.MakeButton("检查更新", 20, 46, 130, 34);
-            btnUpdate.Font = UiTheme.Font(9.5f);
-            btnUpdate.Click += OnCheckUpdate;
-            c6.Controls.Add(btnUpdate);
-
-            var btnAbout = UiTheme.MakeButton("关于", 158, 46, 96, 34);
-            btnAbout.Font = UiTheme.Font(9.5f);
-            btnAbout.Click += delegate
-            {
-                MessageBox.Show(this,
-                    "phoneMic v" + Proto.Version + "\n\n" +
-                    "把手机变成电脑的麦克风（和耳机）。\n\n" +
-                    "源码（两边同步）：\n" +
-                    "码云　https://gitee.com/heishanyao_admin/phoneMic-Windows\n" +
-                    "GitHub　https://github.com/HS-LaoYao/phoneMic-Windows\n\n" +
-                    "安装包放在码云的「发行版」里，检查更新也是从那里拉。",
-                    "关于 phoneMic", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            };
-            c6.Controls.Add(btnAbout);
-
-            var btnReleases = UiTheme.MakeButton("发行版页面", 262, 46, 120, 34);
-            btnReleases.Font = UiTheme.Font(9.5f);
-            btnReleases.Click += delegate
-            {
-                try { System.Diagnostics.Process.Start(Updater.ReleasesPage); } catch { }
-            };
-            c6.Controls.Add(btnReleases);
-
-            c6.Controls.Add(UiTheme.MakeLabel(
-                "当前 v" + Proto.Version + " · 新版会从码云发行版下载安装包",
-                392, 52, w - 412, 26, 9.5f, UiTheme.Sub));
-        }
-
-        // ==================== 检查更新 ====================
-
-        private void OnCheckUpdate(object sender, EventArgs e)
-        {
-            var btn = sender as Button;
-
-            var th = new System.Threading.Thread(delegate()
-            {
-                var info = Updater.Check();
-
-                BeginInvoke((Action)delegate
-                {
-                    if (info.Error != null)
-                    {
-                        MessageBox.Show(this, "检查更新失败：\n" + info.Error, "phoneMic",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-                    if (!Updater.IsNewer(info.Version, Proto.Version))
-                    {
-                        MessageBox.Show(this, "已经是最新版（v" + Proto.Version + "）", "phoneMic",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return;
-                    }
-                    if (string.IsNullOrEmpty(info.Url))
-                    {
-                        MessageBox.Show(this,
-                            "码云上有新版本 v" + info.Version + "，但没找到安装包。\n" +
-                            "点「发行版页面」手动下载吧。", "phoneMic",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-
-                    var r = MessageBox.Show(this,
-                        "发现新版本 v" + info.Version + "（当前 v" + Proto.Version + "）。\n\n" +
-                        "下载并运行安装包吗？", "phoneMic · 检查更新",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                    if (r != DialogResult.Yes) return;
-
-                    if (btn != null) { btn.Enabled = false; btn.Text = "下载中…"; }
-                    var th2 = new System.Threading.Thread(delegate()
-                    {
-                        string err = null;
-                        try { Updater.DownloadAndRun(info.Url, info.Version); }
-                        catch (Exception ex) { err = ex.Message; }
-
-                        BeginInvoke((Action)delegate
-                        {
-                            if (btn != null) { btn.Enabled = true; btn.Text = "检查更新"; }
-                            if (err != null)
-                                MessageBox.Show(this, "下载失败：\n" + err, "phoneMic",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        });
-                    });
-                    th2.IsBackground = true;
-                    th2.Start();
-                });
-            });
-            th.IsBackground = true;
-            th.Start();
         }
 
         // ==================== 设备 ====================
