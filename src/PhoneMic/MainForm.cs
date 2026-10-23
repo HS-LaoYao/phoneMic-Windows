@@ -41,6 +41,7 @@ namespace PhoneMic
         private volatile float _peak;
         private long _packets;
         private long _lastAudioTicks;
+        private long _pttDownTicks;      // 本次「开始说话」的时刻
         private int _silentTicks;
 
         private readonly List<string> _logBuf = new List<string>();
@@ -658,6 +659,13 @@ namespace PhoneMic
             bool ok = true;
             lock (_keyLock) ok = KeyInjector.Press(_cfg.Keys);
 
+            // 关键：这里必须立刻刷新时间戳。
+            // 否则 OnTick 会拿「上一次说话」的旧时间戳去算「多久没声音」，
+            // 算出来几万毫秒，于是刚按下的键在下一个 tick 就被我们自己松开了 ——
+            // 表现就是「只按了一下」，目标软件完全来不及进入录音状态。
+            _pttDownTicks = Stopwatch.GetTimestamp();
+            _lastAudioTicks = _pttDownTicks;
+
             MarkConnected();
             Ui(() => { _silentTicks = 0; SetTalking(true); });
 
@@ -667,7 +675,8 @@ namespace PhoneMic
                 if (ok)
                 {
                     string desc = KeyInjector.Describe(_cfg.Keys);
-                    Ui(() => Log("按下：" + desc));
+                    bool confirmed = KeyInjector.IsKeyDown(_cfg.Keys[_cfg.Keys.Length - 1]);
+                    Ui(() => Log("按下：" + desc + (confirmed ? "（系统已确认按住）" : "（系统没认，可能被权限拦截）")));
                 }
                 else
                 {
@@ -768,14 +777,21 @@ namespace PhoneMic
         {
             if (!_running || _rx == null) return;
 
-            // 1.5 秒没收到音频 → 认为已经停止说话（兼容 PTT 包丢失的情况）
-            if (_talking && _lastAudioTicks != 0)
+            // 2 秒没收到音频 → 认为已经停止说话（兼容 PTT_UP 丢包）。
+            // 参照点取「按下时刻」和「最后一帧音频」里较晚的那个，
+            // 保证刚按下时绝不会被误判成「已经停了」。
+            if (_talking)
             {
-                double ms = (Stopwatch.GetTimestamp() - _lastAudioTicks) * 1000.0 / Stopwatch.Frequency;
-                if (ms > 1500)
+                long reference = _lastAudioTicks > _pttDownTicks ? _lastAudioTicks : _pttDownTicks;
+                if (reference != 0)
                 {
-                    lock (_keyLock) KeyInjector.ReleaseAll();
-                    SetTalking(false);
+                    double ms = (Stopwatch.GetTimestamp() - reference) * 1000.0 / Stopwatch.Frequency;
+                    if (ms > 2000)
+                    {
+                        lock (_keyLock) KeyInjector.ReleaseAll();
+                        SetTalking(false);
+                        Log("2 秒没收到声音，已自动松开按键");
+                    }
                 }
             }
 
