@@ -365,54 +365,6 @@ namespace PhoneMic
                 StartRouteExtras();
             }
         }
-
-        /// <summary>按当前模式挂上「监听」和「抓系统声音」两条附加通道</summary>
-        private void StartRouteExtras()
-        {
-            if (_mode >= 2)
-            {
-                try
-                {
-                    _monitor = new AudioOutput();
-                    _monitor.Volume = Math.Max(0f, Math.Min(1f, _cfg.MonitorVolume / 100f));
-                    _monitor.Start(AudioDefault.GetDefaultRenderId(NAudio.CoreAudioApi.Role.Multimedia));
-                    Log("监听通道已开启，音量 " + _cfg.MonitorVolume + "%");
-                }
-                catch (Exception ex)
-                {
-                    _monitor = null;
-                    Log("监听通道启动失败：" + ex.Message);
-                }
-            }
-
-            if (_mode == 3)
-            {
-                try
-                {
-                    _loop = new LoopbackSender();
-                    _loop.FrameReady += delegate(byte[] pcm, int len)
-                    {
-                        var r = _rx;
-                        if (r != null) r.SendAudioToPeer(pcm, len);
-                    };
-                    _loop.Start();
-
-                    if (_cfg.MutePcInHeadset)
-                    {
-                        AudioOutput.SetSystemMute(true);
-                        _weMutedPc = true;
-                        Log("已静音电脑扬声器（手机当耳机）");
-                    }
-                    Log("已开始把电脑声音送到手机");
-                }
-                catch (Exception ex)
-                {
-                    _loop = null;
-                    Log("抓取系统声音失败：" + ex.Message);
-                }
-            }
-        }
-
         /// <summary>设置页拖动监听音量时实时生效</summary>
         internal void ApplyMonitorVolume(float vol)
         {
