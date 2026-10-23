@@ -237,7 +237,8 @@ namespace PhoneMic
             _cboKeyMode.Items.Add("虚拟键码（默认，先试这个）");
             _cboKeyMode.Items.Add("扫描码（游戏或者特殊程序用）");
             _cboKeyMode.Items.Add("消息投递（屏蔽了模拟按键的程序用）");
-            _cboKeyMode.SelectedIndex = Math.Max(0, Math.Min(2, _cfg.KeyMode));
+            _cboKeyMode.Items.Add("双路（两种一起发，最不容易漏，推荐先试这个）");
+            _cboKeyMode.SelectedIndex = Math.Max(0, Math.Min(3, _cfg.KeyMode));
             _cboKeyMode.SelectedIndexChanged += delegate
             {
                 _cfg.KeyMode = _cboKeyMode.SelectedIndex;

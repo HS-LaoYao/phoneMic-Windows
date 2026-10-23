@@ -16,7 +16,7 @@ namespace PhoneMic
         public int[] Keys = new int[0];           // 说话时要按住的键（虚拟键码，按顺序按下）
         public bool MinimizeToTray = true;        // 关窗口是否最小化到托盘
         public bool AutoStartOnLaunch = true;     // 启动即开始监听
-        public int KeyMode = 0;                   // 按键注入方式：0=虚拟键码 1=扫描码 2=消息投递
+        public int KeyMode = 0;                   // 按键注入方式：0=虚拟键码 1=扫描码 2=消息投递 3=双路
 
         // ===== 音频路由 =====
         public int RouteMode = 1;                 // 1=只当麦克风 2=麦克风+监听 3=手机当耳机

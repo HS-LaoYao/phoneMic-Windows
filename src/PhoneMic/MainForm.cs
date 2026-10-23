@@ -840,6 +840,22 @@ namespace PhoneMic
         {
             if (!_running || _rx == null) return;
 
+            // 按住期间定期重发「按下」：真键盘长按会有重复 KEYDOWN，
+            // 有些程序就靠这个判断「还按着」。SendInput 只发一次，它们会以为松开了。
+            bool hasKeys = _cfg.Keys != null && _cfg.Keys.Length > 0;
+            if (_talking && hasKeys && KeyInjector.IsHeld) KeyInjector.Repeat();
+
+            // 实时诊断：前台是哪个程序、键到底按下没有。
+            // 长按的时候瞄一眼就知道问题卡在哪一环。
+            if (_lblDetail != null)
+            {
+                string fg = KeyInjector.ForegroundProcessName();
+                string key = hasKeys
+                    ? (KeyInjector.IsHeld ? "按键 ✓ 已按住" : "按键 未按下")
+                    : "未设置按键";
+                _lblDetail.Text = "前台：" + (string.IsNullOrEmpty(fg) ? "?" : fg) + "　" + key;
+            }
+
             // 2 秒没收到音频 → 认为已经停止说话（兼容 PTT_UP 丢包）。
             // 参照点取「按下时刻」和「最后一帧音频」里较晚的那个，
             // 保证刚按下时绝不会被误判成「已经停了」。

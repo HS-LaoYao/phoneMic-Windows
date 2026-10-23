@@ -72,7 +72,9 @@ namespace PhoneMic
             /// <summary>扫描码（部分游戏只认扫描码）</summary>
             ScanCode = 1,
             /// <summary>直接把按键消息投递到前台窗口（给屏蔽了模拟按键的程序用）</summary>
-            Message = 2
+            Message = 2,
+            /// <summary>两路一起发：SendInput + 消息投递（最不容易漏）</summary>
+            Dual = 3
         }
 
         public static InjectMode Mode = InjectMode.VirtualKey;
@@ -139,6 +141,19 @@ namespace PhoneMic
         }
 
         public static bool IsHeld { get { return _held; } }
+
+        /// <summary>
+        /// 按住期间重发一次「按下」。
+        /// 真键盘按住时会不断产生重复的 KEYDOWN，有些程序就是靠这个判断「还按着」；
+        /// 而 SendInput 只发一次，所以它们会认为已经松开了。
+        /// </summary>
+        public static bool Repeat()
+        {
+            if (!_held) return true;
+            bool ok = true;
+            foreach (int vk in _heldKeys) ok &= Send(vk, true);
+            return ok;
+        }
 
         /// <summary>测试注入：按下 → 等一会 → 松开，返回是否每次都成功</summary>
         public static bool TestPress(int vk, int holdMs)
@@ -224,7 +239,11 @@ namespace PhoneMic
             };
             var arr = new INPUT[1];
             arr[0] = input;
-            return SendInput(1, arr, Marshal.SizeOf(typeof(INPUT))) == 1;
+            bool ok = SendInput(1, arr, Marshal.SizeOf(typeof(INPUT))) == 1;
+
+            // 双路模式：再补一份窗口消息，防止目标程序只认消息不认注入
+            if (Mode == InjectMode.Dual) SendByMessage(baseVk, ext, down);
+            return ok;
         }
 
         /// <summary>
