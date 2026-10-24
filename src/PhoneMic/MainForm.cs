@@ -41,7 +41,6 @@ namespace PhoneMic
         private bool _connected;
 
         private volatile float _peak;
-        private long _packets;
         private long _lastAudioTicks;
         private long _pttDownTicks;      // 本次「开始说话」的时刻
         private long _lastDiscoverLog;   // 上一次记录「手机正在查找」的时间
@@ -128,7 +127,7 @@ namespace PhoneMic
             int w = W;                       // 设计宽度，卡片/按钮内部会按 DPI 换算
 
             Controls.Add(UiTheme.MakeLabel("phoneMic", 24, 16, 300, 40, 18f, UiTheme.Text));
-            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v" + Proto.Version + "", 26, 58, 340, 24, 10f, UiTheme.Sub));
+            Controls.Add(UiTheme.MakeLabel("手机当电脑麦克风 · v" + Proto.Version, 26, 58, 340, 24, 10f, UiTheme.Sub));
 
             _btnSettings = UiTheme.MakeButton("设 置", w - 24 - 40 - 8 - 100, 24, 100, 38);
             _btnSettings.Click += delegate { OpenSettings(); };
@@ -864,7 +863,6 @@ namespace PhoneMic
 
             _running = true;
             _connected = false;
-            _packets = 0;
             _btnStart.Text = "停 止";
             _btnStart.BackColor = Color.FromArgb(0x2C, 0x35, 0x40);
             SetStatus("等待手机连接", UiTheme.Amber, "在手机上打开 phoneMic 会自动找到这台电脑");
@@ -932,7 +930,6 @@ namespace PhoneMic
 
             float lv = Rms(buf, Proto.AudioHeader, count);
             if (lv > _peak) _peak = lv;
-            _packets++;
             _lastAudioTicks = Stopwatch.GetTimestamp();
 
             MarkConnected();
@@ -1044,7 +1041,7 @@ namespace PhoneMic
 
             if (_wave != null) _wave.Push(p);
             if (_lblMeter != null)
-                _lblMeter.Text = "电平 " + (int)(p * 100) + "%    已收 " + _packets + " 包";
+                _lblMeter.Text = "电平 " + (int)(p * 100) + "%";
 
             if (_talking && _audio != null)
             {

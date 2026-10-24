@@ -24,7 +24,7 @@ namespace PhoneMic
         public const int Port = 47810;
 
         /// <summary>程序版本。检查更新时和码云发行版上的 tag 比（改版本记得同步改 installer/phoneMic.iss）</summary>
-        public const string Version = "1.0.5";
+        public const string Version = "1.1.0";
 
         public const byte TAudio = 0x01;
         public const byte TPttDown = 0x10;

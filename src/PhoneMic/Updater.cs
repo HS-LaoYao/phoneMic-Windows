@@ -18,9 +18,6 @@ namespace PhoneMic
         public const string Api =
             "https://gitee.com/api/v5/repos/heishanyao_admin/phoneMic-Windows/releases/latest";
 
-        public const string ReleasesPage =
-            "https://gitee.com/heishanyao_admin/phoneMic-Windows/releases";
-
         internal sealed class UpdateInfo
         {
             public string Version;   // 远端版本号，如 1.0.3

@@ -7,9 +7,7 @@ namespace PhoneMic
     /// <summary>
     /// 抓取电脑正在播放的声音，统一转成 48kHz / 16bit / 单声道，按 10ms 一帧（960 字节）交出去。
     ///
-    /// 两种用法：
-    ///   Start()                     —— 抓系统默认播放设备（loopback）
-    ///   StartFromCapture(deviceId)  —— 直接读某个录音设备（模式③ 读虚拟声卡的 Output 端）
+    /// 用法：StartFromCapture(deviceId) —— 直接读某个录音设备（模式③ 读虚拟声卡的 Output 端）。
     ///
     /// 转换全部自己算，不依赖 NAudio 的重采样链：
     /// 虚拟声卡的格式可能是 44.1k/48k、16/24/32 位、1~2 声道，
@@ -31,11 +29,6 @@ namespace PhoneMic
 
         /// <summary>每 10ms 触发一次，参数为 960 字节的 PCM</summary>
         public event Action<byte[], int> FrameReady;
-
-        public void Start()
-        {
-            StartWith(new WasapiLoopbackCapture());
-        }
 
         public void StartFromCapture(string captureDeviceId)
         {

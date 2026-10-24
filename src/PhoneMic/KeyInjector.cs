@@ -5,9 +5,10 @@ using System.Runtime.InteropServices;
 namespace PhoneMic
 {
     /// <summary>
-    /// 往系统里注入按键（SendInput）。
+    /// 往系统里注入按键。
     ///
-    /// 用扫描码而不是虚拟键码，兼容性更好 —— 有些程序只认扫描码。
+    /// 默认走 SendInput（虚拟键码）；对屏蔽模拟按键的程序可以切换成扫描码 / 窗口消息 / 双路。
+    /// 选了「作用窗口」时，按键按配置的投递方式发给指定程序（后台消息，不切前台）。
     /// </summary>
     internal static class KeyInjector
     {

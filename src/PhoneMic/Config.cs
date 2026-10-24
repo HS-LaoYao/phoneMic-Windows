@@ -26,7 +26,6 @@ namespace PhoneMic
         // ===== 音频路由 =====
         public int RouteMode = 1;                 // 1=只当麦克风 2=麦克风+监听 3=手机当耳机
         public int MonitorVolume = 60;            // 监听音量 0~100
-        public bool MutePcInHeadset = false;      // 模式③时是否静音电脑扬声器
 
         // 「一键设为默认麦克风」之前系统用的设备，用来还原
         public string PrevConsoleId = "";
@@ -71,8 +70,6 @@ namespace PhoneMic
                         case "deliveryMode": c.DeliveryMode = int.TryParse(v, out int dm) ? dm : 0; break;
                         case "routeMode": c.RouteMode = int.TryParse(v, out int rm) ? rm : 1; break;
                         case "monitorVolume": c.MonitorVolume = int.TryParse(v, out int mv) ? mv : 60; break;
-                        case "mutePcInHeadset": c.MutePcInHeadset = v == "1"; break;
-                        case "useScanCode": if (v == "1") c.KeyMode = 1; break;
                         case "prevConsole": c.PrevConsoleId = v; break;
                         case "prevComm": c.PrevCommId = v; break;
                     }
@@ -98,7 +95,6 @@ namespace PhoneMic
                 sb.AppendLine("deliveryMode=" + DeliveryMode);
                 sb.AppendLine("routeMode=" + RouteMode);
                 sb.AppendLine("monitorVolume=" + MonitorVolume);
-                sb.AppendLine("mutePcInHeadset=" + (MutePcInHeadset ? "1" : "0"));
                 sb.AppendLine("prevConsole=" + PrevConsoleId);
                 sb.AppendLine("prevComm=" + PrevCommId);
                 File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);

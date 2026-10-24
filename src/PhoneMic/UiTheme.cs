@@ -61,8 +61,6 @@ namespace PhoneMic
 
         public static float S(float v) { return v * _scale; }
 
-        public static float Scale { get { return _scale; } }
-
         public static readonly Color Bg = Color.FromArgb(0x12, 0x16, 0x1A);
         public static readonly Color CardBg = Color.FromArgb(0x1B, 0x22, 0x2A);
         public static readonly Color Field = Color.FromArgb(0x0F, 0x14, 0x19);

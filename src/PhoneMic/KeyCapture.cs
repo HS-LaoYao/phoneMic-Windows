@@ -51,8 +51,6 @@ namespace PhoneMic
         private readonly List<int> _mods = new List<int>();
         private bool _done;
 
-        public bool IsActive { get { return _hook != IntPtr.Zero; } }
-
         public void Start()
         {
             if (_hook != IntPtr.Zero) return;

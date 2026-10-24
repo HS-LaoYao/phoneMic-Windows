@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using NAudio.CoreAudioApi;
@@ -16,22 +14,19 @@ namespace PhoneMic
     internal sealed class SettingsForm : Form
     {
         private const int W = 660;
-        private const int H = 994;
+        private const int H = 956;
 
         private readonly MainForm _owner;
         private readonly Config _cfg;
 
         private Label _lblRender, _lblVol;
         private TrackBar _trackVol;
-        private CheckBox _chkMutePc;
         private TextBox _txtAddr;
         private ComboBox _cboDevice, _cboKeyMode;
         private Label _lblVb, _lblMicConsole, _lblMicComm, _lblTest;
         private Button _btnInstall, _btnSetMic, _btnRestoreMic, _btnSelfTest;
         private CheckBox _chkMin, _chkAuto;
         private TextBox _txtLog;
-
-        private float _lastPeak = -1f;
 
         public SettingsForm(MainForm owner, Config cfg)
         {
@@ -92,7 +87,7 @@ namespace PhoneMic
             c1.Controls.Add(btnCopy);
 
             // ---------- 输出设备 ----------
-            var c2 = UiTheme.MakeCard(this, 24, 136, w, 252, "音频路由（麦克风输出 / 扬声器 / 监听）");
+            var c2 = UiTheme.MakeCard(this, 24, 136, w, 214, "音频路由（麦克风输出 / 扬声器 / 监听）");
             _cboDevice = new ComboBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(48)),
@@ -157,26 +152,8 @@ namespace PhoneMic
             c2.Controls.Add(_trackVol);
             c2.Controls.Add(_lblVol);
 
-            // 模式③时是否把电脑扬声器静音
-            _chkMutePc = new CheckBox
-            {
-                Text = "模式③时静音电脑扬声器（声音只在手机里出）",
-                Location = new Point(UiTheme.S(20), UiTheme.S(224)),
-                AutoSize = true,
-                ForeColor = UiTheme.Sub,
-                Font = UiTheme.Font(10f),
-                Checked = _cfg.MutePcInHeadset
-            };
-            _chkMutePc.CheckedChanged += delegate
-            {
-                _cfg.MutePcInHeadset = _chkMutePc.Checked;
-                _cfg.Save();
-                _owner.ReloadAfterSettings();
-            };
-            c2.Controls.Add(_chkMutePc);
-
             // ---------- 系统麦克风 ----------
-            var c3 = UiTheme.MakeCard(this, 24, 404, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
+            var c3 = UiTheme.MakeCard(this, 24, 366, w, 210, "别的软件用哪个麦克风（必须是 CABLE Output）");
 
             _lblMicConsole = UiTheme.MakeLabel("默认设备：读取中…", 20, 48, w - 20 - 190, 26, 10f, UiTheme.Sub);
             c3.Controls.Add(_lblMicConsole);
@@ -204,7 +181,7 @@ namespace PhoneMic
             c3.Controls.Add(_lblTest);
 
             // ---------- 选项 ----------
-            var c4 = UiTheme.MakeCard(this, 24, 630, w, 128, "选项");
+            var c4 = UiTheme.MakeCard(this, 24, 592, w, 128, "选项");
             _chkMin = new CheckBox
             {
                 Text = "关闭窗口时最小化到托盘（不退出）",
@@ -255,7 +232,7 @@ namespace PhoneMic
             c4.Controls.Add(_cboKeyMode);
 
             // ---------- 日志 ----------
-            var c5 = UiTheme.MakeCard(this, 24, 774, w, 200, "运行日志");
+            var c5 = UiTheme.MakeCard(this, 24, 736, w, 200, "运行日志");
             _txtLog = new TextBox
             {
                 Location = new Point(UiTheme.S(20), UiTheme.S(46)),
@@ -556,7 +533,6 @@ namespace PhoneMic
                 {
                     _btnSelfTest.Enabled = true;
                     _btnSelfTest.Text = "声卡自检（录 3 秒）";
-                    _lastPeak = peak;
 
                     if (err != null)
                     {

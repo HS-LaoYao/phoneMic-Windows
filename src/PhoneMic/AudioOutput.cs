@@ -23,8 +23,6 @@ namespace PhoneMic
         /// <summary>播放音量 0~1（监听模式用来调大小，不动系统音量）</summary>
         public float Volume = 1f;
 
-        public bool IsPlaying { get { return _out != null && _out.PlaybackState == PlaybackState.Playing; } }
-
         /// <summary>列出所有正在工作的播放设备</summary>
         public static List<DevInfo> ListDevices()
         {
@@ -184,20 +182,6 @@ namespace PhoneMic
                 }
             }
             catch { return null; }
-        }
-
-        /// <summary>把系统默认播放设备静音 / 取消静音（模式③用）</summary>
-        public static void SetSystemMute(bool mute)
-        {
-            try
-            {
-                using (var en = new MMDeviceEnumerator())
-                {
-                    var d = en.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                    if (d != null) d.AudioEndpointVolume.Mute = mute;
-                }
-            }
-            catch { }
         }
 
         /// <summary>按名字片段找播放设备 ID（例如 "CABLE" / "CABLE-B"）</summary>
