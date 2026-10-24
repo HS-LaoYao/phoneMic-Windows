@@ -26,8 +26,13 @@ namespace PhoneMic
         public event Action<int> Heartbeat;
         /// <summary>手机上点了「发送」—— 参数为发送键编号（见 Proto.SendEnter / SendShiftEnter）</summary>
         public event Action<int> SendKey;
+        /// <summary>手机远程切换路由模式（1~3），参数为模式编号</summary>
+        public event Action<int> ModeSet;
         /// <summary>有设备来发现本机</summary>
         public event Action<string> Discovered;           // 参数为对方 IP
+
+        /// <summary>当前路由模式（由主窗口同步进来），心跳应答里捎带给手机</summary>
+        public volatile int CurrentMode = 1;
 
         /// <summary>最后一次收到任何包的时间（Stopwatch 时间戳），用于判断掉线</summary>
         public long LastPacketAt { get; private set; }
@@ -130,8 +135,19 @@ namespace PhoneMic
                         {
                             // 心跳要回一个应答：手机靠它判断电脑还活着。
                             // 不回的话电脑关了，手机上仍显示「已连接」，容易误判。
-                            try { _udp.Send(new byte[] { Proto.TAck }, 1, ep); } catch { }
+                            // 应答里捎带当前模式（旧版手机只认第一个字节，不会受影响）。
+                            try { _udp.Send(new byte[] { Proto.TAck, (byte)CurrentMode }, 2, ep); } catch { }
                             var h = Heartbeat; if (h != null) h(data.Length > 1 ? data[1] : 0);
+                        }
+                        break;
+
+                    case Proto.TModeSet:
+                        {
+                            if (data.Length >= 2)
+                            {
+                                var h = ModeSet;
+                                if (h != null) h(data[1]);
+                            }
                         }
                         break;
 

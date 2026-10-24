@@ -24,16 +24,20 @@ namespace PhoneMic
         public const int Port = 47810;
 
         /// <summary>程序版本。检查更新时和码云发行版上的 tag 比（改版本记得同步改 installer/phoneMic.iss）</summary>
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
 
         public const byte TAudio = 0x01;
         public const byte TPttDown = 0x10;
         public const byte TPttUp = 0x11;
         public const byte THeartbeat = 0x12;
+        /// <summary>心跳应答 [22][当前路由模式] —— 手机据此同步电脑端的模式显示</summary>
         public const byte TAck = 0x22;
         public const byte TAudioDown = 0x02;   // 电脑→手机 的音频（手机当耳机时用）
         public const byte TDiscover = 0x20;
         public const byte TDiscoverAck = 0x21;
+
+        /// <summary>手机远程切换电脑端模式 [14][mode:u8]（1~3，同 RouteMode）</summary>
+        public const byte TModeSet = 0x14;
 
         /// <summary>
         /// 「发送键」[13][seq:u16][key:u8] —— 手机上点「发送」，电脑按一次指定键。

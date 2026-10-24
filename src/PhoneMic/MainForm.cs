@@ -580,20 +580,58 @@ namespace PhoneMic
             }
         }
 
-        private void SetMode(int m)
+        private void SetMode(int m) { SetMode(m, false); }
+
+        private void SetMode(int m, bool fromRemote)
         {
             if (m == _mode) return;
             _mode = m;
             _cfg.RouteMode = m;
             _cfg.Save();
             UpdateModeButtons();
-            Log("使用模式改为：" + ModeText(m));
+            PulseModeButtons();                      // 切过去的那张按钮闪几下
+            if (_rx != null) _rx.CurrentMode = m;    // 让手机端通过心跳应答同步到当前模式
+            Log(fromRemote ? "手机端远程切换模式：" + ModeText(m)
+                           : "使用模式改为：" + ModeText(m));
+
+            // 手机远程切的 → 右下角弹个系统通知，人不在电脑前也知道变了
+            if (fromRemote && _tray != null)
+                _tray.ShowBalloonTip(3000, "phoneMic 模式已切换", ModeText(m), ToolTipIcon.Info);
 
             if (_running)                       // 运行中切模式 → 重挂路由
             {
                 StopRouteExtras();
                 StartRouteExtras();
             }
+        }
+
+        // 模式切换的按钮闪烁动画：蓝 ↔ 亮蓝交替 6 次后归位
+        private Timer _pulseTimer;
+        private int _pulseLeft;
+
+        private void PulseModeButtons()
+        {
+            if (_modeBtns == null || _mode < 1 || _mode > 3) return;
+            if (_pulseTimer == null)
+            {
+                _pulseTimer = new Timer();
+                _pulseTimer.Interval = 160;
+                _pulseTimer.Tick += delegate
+                {
+                    _pulseLeft--;
+                    var b = _modeBtns[_mode - 1];
+                    b.BackColor = (_pulseLeft % 2 == 0)
+                        ? Color.FromArgb(0x5B, 0xB8, 0xFF)   // 亮蓝
+                        : UiTheme.Blue;
+                    if (_pulseLeft <= 0)
+                    {
+                        _pulseTimer.Stop();
+                        UpdateModeButtons();
+                    }
+                };
+            }
+            _pulseLeft = 6;
+            _pulseTimer.Start();
         }
         /// <summary>设置页拖动监听音量时实时生效</summary>
         internal void ApplyMonitorVolume(float vol)
@@ -836,11 +874,13 @@ namespace PhoneMic
             if (!StartAudio()) return;
 
             _rx = new UdpReceiver();
+            _rx.CurrentMode = _mode;
             _rx.AudioReceived += OnAudio;
             _rx.PttDown += OnPttDown;
             _rx.PttUp += OnPttUp;
             _rx.Heartbeat += OnHeartbeat;
             _rx.SendKey += OnSendKey;
+            _rx.ModeSet += OnRemoteMode;
             _rx.Discovered += delegate(string ip)
             {
                 long now = Stopwatch.GetTimestamp();
@@ -1003,6 +1043,13 @@ namespace PhoneMic
         /// 手机上点了「发送」：在电脑当前焦点窗口里敲一次回车（或 Shift+回车）。
         /// 先松开长按中的 Alt —— 不然敲出来的会是 Alt+回车。
         /// </summary>
+        /// <summary>手机端远程切换路由模式（0x14）。和本地点按钮走同一条路径</summary>
+        private void OnRemoteMode(int m)
+        {
+            if (m < 1 || m > 3) return;
+            Ui(() => SetMode(m, true));
+        }
+
         private void OnSendKey(int keyId)
         {
             bool shift = keyId == Proto.SendShiftEnter;
